@@ -1365,7 +1365,7 @@ async fn cli_main(
                         .await;
                     } else if login_cli.api_key.is_some() {
                         eprintln!(
-                            "The --api-key flag is no longer supported. Pipe the key instead, e.g. `printenv OPENAI_API_KEY | codex login --with-api-key`."
+                            "The --api-key flag is no longer supported. Pipe the key instead, e.g. `printenv ANZOTH_API_KEY | anzoth login --with-api-key`."
                         );
                         std::process::exit(1);
                     } else if login_cli.with_api_key {
