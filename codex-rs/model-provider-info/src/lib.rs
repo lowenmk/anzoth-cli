@@ -36,6 +36,8 @@ const OPENAI_PROVIDER_NAME: &str = "OpenAI";
 const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+pub const ANZOTH_PROVIDER_ID: &str = "anzoth";
+pub const ANZOTH_DEFAULT_BASE_URL: &str = "https://api.anzoth.com/v1";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
 pub const AMAZON_BEDROCK_GPT_5_5_MODEL_ID: &str = "openai.gpt-5.5";
@@ -363,6 +365,35 @@ impl ModelProviderInfo {
         }
     }
 
+    pub fn create_anzoth_provider(base_url: Option<String>) -> ModelProviderInfo {
+        ModelProviderInfo {
+            name: "Anzoth".into(),
+            base_url: Some(base_url.unwrap_or_else(|| ANZOTH_DEFAULT_BASE_URL.to_string())),
+            env_key: Some("ANZOTH_API_KEY".into()),
+            env_key_instructions: Some(
+                "Set ANZOTH_API_KEY to your Anzoth API key (keys typically start with `anz_`)."
+                    .into(),
+            ),
+            experimental_bearer_token: None,
+            auth: None,
+            aws: None,
+            wire_api: WireApi::Responses,
+            query_params: None,
+            http_headers: Some(
+                [("version".to_string(), env!("CARGO_PKG_VERSION").to_string())]
+                    .into_iter()
+                    .collect(),
+            ),
+            env_http_headers: None,
+            request_max_retries: None,
+            stream_max_retries: None,
+            stream_idle_timeout_ms: None,
+            websocket_connect_timeout_ms: None,
+            requires_openai_auth: false,
+            supports_websockets: false,
+        }
+    }
+
     pub fn create_amazon_bedrock_provider(
         aws: Option<ModelProviderAwsAuthInfo>,
     ) -> ModelProviderInfo {
@@ -439,6 +470,10 @@ pub fn built_in_model_providers(
     // open source ("oss") providers by default. Users are encouraged to add to
     // `model_providers` in config.toml to add their own providers.
     [
+        (
+            ANZOTH_PROVIDER_ID,
+            P::create_anzoth_provider(/*base_url*/ None),
+        ),
         (OPENAI_PROVIDER_ID, openai_provider),
         (AMAZON_BEDROCK_PROVIDER_ID, amazon_bedrock_provider),
         (

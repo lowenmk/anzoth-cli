@@ -323,10 +323,24 @@ fn test_amazon_bedrock_provider_adds_mantle_client_agent_header() {
     assert_eq!(
         api_provider
             .headers
-            .get(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER)
-            .and_then(|value| value.to_str().ok()),
+        .get(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER)
+        .and_then(|value| value.to_str().ok()),
         Some(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE)
     );
+}
+
+#[test]
+fn test_built_in_model_providers_include_anzoth() {
+    let providers = built_in_model_providers(/*openai_base_url*/ None);
+
+    let provider = providers
+        .get(ANZOTH_PROVIDER_ID)
+        .expect("Anzoth provider should be built in");
+    assert_eq!(provider.name, "Anzoth");
+    assert_eq!(provider.base_url.as_deref(), Some(ANZOTH_DEFAULT_BASE_URL));
+    assert_eq!(provider.env_key.as_deref(), Some("ANZOTH_API_KEY"));
+    assert_eq!(provider.wire_api, WireApi::Responses);
+    assert!(!provider.requires_openai_auth);
 }
 
 #[test]
