@@ -16,7 +16,7 @@ use wiremock::matchers::method;
 use wiremock::matchers::path;
 
 fn codex_command(codex_home: &Path) -> Result<assert_cmd::Command> {
-    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("codex")?);
+    let mut cmd = assert_cmd::Command::new(codex_utils_cargo_bin::cargo_bin("anzoth")?);
     cmd.env("CODEX_HOME", codex_home);
     Ok(cmd)
 }
@@ -46,15 +46,84 @@ fn login_with_api_key_reads_stdin_and_writes_auth_json() -> Result<()> {
         "login",
         "--with-api-key",
     ])
-    .write_stdin("sk-test\n")
+    .write_stdin("anz_test-key\n")
     .assert()
     .success()
     .stderr(contains("Successfully logged in"));
 
     let auth = read_auth_json(codex_home.path())?;
-    assert_eq!(auth["OPENAI_API_KEY"], "sk-test");
+    assert_eq!(auth["OPENAI_API_KEY"], "anz_test-key");
     assert!(auth.get("tokens").is_none());
     assert!(auth.get("agent_identity").is_none());
+
+    Ok(())
+}
+
+#[test]
+fn login_with_api_key_rejects_empty_stdin() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_file_auth_config(codex_home.path())?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    let assert = cmd
+        .args(["login", "--with-api-key"])
+        .write_stdin("\n")
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8(assert.get_output().stderr.clone())?;
+    assert!(stderr.contains("No API key provided via stdin."));
+    assert!(!stderr.contains("OPENAI_API_KEY"));
+    assert!(!stderr.contains("anz_"));
+
+    Ok(())
+}
+
+#[test]
+fn login_with_api_key_rejects_malformed_stdin() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_file_auth_config(codex_home.path())?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    let assert = cmd
+        .args(["login", "--with-api-key"])
+        .write_stdin("sk-test-key\n")
+        .assert()
+        .failure();
+
+    let stderr = String::from_utf8(assert.get_output().stderr.clone())?;
+    assert!(stderr.contains("API key must start with `anz_`."));
+    assert!(!stderr.contains("sk-test-key"));
+
+    Ok(())
+}
+
+#[test]
+fn login_with_api_key_accepts_anzoth_prefix_without_echoing_it() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_file_auth_config(codex_home.path())?;
+
+    let api_key = "anz_local-test-key";
+    let mut cmd = codex_command(codex_home.path())?;
+    let assert = cmd
+        .args([
+            "-c",
+            "forced_login_method=\"api\"",
+            "login",
+            "--with-api-key",
+        ])
+        .write_stdin(format!("{api_key}\n"))
+        .assert()
+        .success();
+
+    let stdout = String::from_utf8(assert.get_output().stdout.clone())?;
+    let stderr = String::from_utf8(assert.get_output().stderr.clone())?;
+    assert!(!stdout.contains(api_key));
+    assert!(!stderr.contains(api_key));
+    assert!(stderr.contains("Successfully logged in"));
+
+    let auth = read_auth_json(codex_home.path())?;
+    assert_eq!(auth["OPENAI_API_KEY"], api_key);
 
     Ok(())
 }
@@ -172,5 +241,38 @@ async fn device_login_revokes_existing_auth_before_requesting_new_tokens() -> Re
 
     let auth = read_auth_json(codex_home.path())?;
     assert_eq!(auth["tokens"]["refresh_token"], "new-refresh");
+    Ok(())
+}
+
+#[test]
+fn login_help_mentions_anzoth_api_key_guidance() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_file_auth_config(codex_home.path())?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    let assert = cmd.args(["login", "--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone())?;
+
+    assert!(stdout.contains("Manage login"));
+    assert!(stdout.contains("ANZOTH_API_KEY"));
+    assert!(stdout.contains("anzoth login --with-api-key"));
+    assert!(!stdout.contains("codex login --with-api-key"));
+    assert!(!stdout.contains("ChatGPT browser-login"));
+
+    Ok(())
+}
+
+#[test]
+fn top_level_help_mentions_anzoth_config_home() -> Result<()> {
+    let codex_home = TempDir::new()?;
+    write_file_auth_config(codex_home.path())?;
+
+    let mut cmd = codex_command(codex_home.path())?;
+    let assert = cmd.args(["--help"]).assert().success();
+    let stdout = String::from_utf8(assert.get_output().stdout.clone())?;
+
+    assert!(stdout.contains("~/.anzoth/config.toml"));
+    assert!(!stdout.contains("~/.codex/config.toml"));
+
     Ok(())
 }

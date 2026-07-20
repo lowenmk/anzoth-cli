@@ -38,8 +38,10 @@ use codex_protocol::ThreadId;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
+use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
+use codex_protocol::openai_models::ModelsResponse;
 use codex_protocol::openai_models::ReasoningEffort;
 use codex_protocol::protocol::InternalSessionSource;
 use codex_protocol::protocol::SessionSource;
@@ -80,6 +82,11 @@ use wiremock::MockServer;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
+use codex_tools::JsonSchema;
+use codex_tools::create_tools_json_for_responses_api;
+use crate::tools::handlers::apply_patch_spec::create_apply_patch_function_tool;
+use crate::tools::handlers::shell_spec::{CommandToolOptions, create_shell_command_tool};
+use codex_tools::ToolSpec;
 
 const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
@@ -273,6 +280,13 @@ fn test_model_info() -> ModelInfo {
         "experimental_supported_tools": []
     }))
     .expect("deserialize test model info")
+}
+
+fn anzoth_model_infos() -> Vec<ModelInfo> {
+    let response: ModelsResponse =
+        serde_json::from_str(include_str!("../../models-anzoth.json"))
+            .expect("deserialize Anzoth model catalog");
+    response.models
 }
 
 fn test_session_telemetry() -> SessionTelemetry {
@@ -552,6 +566,183 @@ fn build_ws_client_metadata_includes_window_lineage_and_turn_metadata() {
             .map(String::as_str),
         Some("collab_spawn")
     );
+}
+
+#[test]
+fn build_chat_completions_request_uses_system_messages_and_tools() {
+    let client = test_model_client(SessionSource::Cli);
+    let prompt = Prompt {
+        input: vec![
+            ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "hello".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            },
+            ResponseItem::FunctionCall {
+                id: Some(ResponseItemId::with_suffix("fc", "1")),
+                name: "shell_command".to_string(),
+                namespace: None,
+                arguments: "{\"command\":\"echo hi\"}".to_string(),
+                call_id: "call-1".to_string(),
+                internal_chat_message_metadata_passthrough: None,
+            },
+        ],
+        tools: vec![ToolSpec::Function(codex_tools::ResponsesApiTool {
+            name: "shell_command".to_string(),
+            description: "Run a shell command".to_string(),
+            strict: false,
+            defer_loading: None,
+            parameters: JsonSchema::object(BTreeMap::new(), None, None),
+            output_schema: None,
+        })],
+        parallel_tool_calls: true,
+        base_instructions: BaseInstructions {
+            text: "You are Anzoth CLI".to_string(),
+        },
+        output_schema: None,
+        output_schema_strict: true,
+    };
+    let request = client
+        .build_chat_completions_request(
+            &prompt,
+            &test_model_info(),
+            /*effort*/ None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            /*service_tier*/ None,
+        )
+        .expect("chat request should build");
+
+    assert_eq!(request["model"], json!(test_model_info().slug));
+    assert_eq!(request["tool_choice"], json!("auto"));
+    assert_eq!(request["parallel_tool_calls"], json!(true));
+    assert_eq!(request["messages"][0]["role"], json!("system"));
+    assert_eq!(request["messages"][0]["content"], json!("You are Anzoth CLI"));
+    assert_eq!(request["messages"][1]["role"], json!("user"));
+    assert_eq!(request["messages"][1]["content"], json!("hello"));
+    assert_eq!(request["messages"][2]["role"], json!("assistant"));
+    assert_eq!(request["messages"][2]["tool_calls"][0]["id"], json!("call-1"));
+    assert_eq!(
+        request["messages"][2]["tool_calls"][0]["function"]["name"],
+        json!("shell_command")
+    );
+    assert_eq!(request["tools"][0]["type"], json!("function"));
+    assert_eq!(request["tools"][0]["function"]["name"], json!("shell_command"));
+}
+
+#[tokio::test]
+async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
+    let client = test_model_client(SessionSource::Cli);
+    let setup = client
+        .current_client_setup()
+        .await
+        .expect("client setup should resolve");
+    let prompt = Prompt {
+        input: vec![ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: "hello".to_string(),
+            }],
+            phase: None,
+            internal_chat_message_metadata_passthrough: None,
+        }],
+        tools: vec![
+            create_shell_command_tool(CommandToolOptions {
+                allow_login_shell: true,
+                exec_permission_approvals_enabled: false,
+            }),
+            create_apply_patch_function_tool(/*include_environment_id*/ false),
+        ],
+        parallel_tool_calls: true,
+        base_instructions: BaseInstructions {
+            text: "You are Anzoth CLI".to_string(),
+        },
+        output_schema: None,
+        output_schema_strict: true,
+    };
+    let expected_tools = create_tools_json_for_responses_api(&prompt.tools)
+        .expect("Anzoth tools should serialize");
+
+    for model_info in anzoth_model_infos() {
+        assert!(
+            !model_info.use_responses_lite,
+            "{} should disable Responses Lite packaging",
+            model_info.slug
+        );
+        let responses_metadata = test_responses_metadata_for_client(
+            &client,
+            /*turn_id*/ None,
+            format!("{}:0", client.state.thread_id),
+            /*parent_thread_id*/ None,
+            TestCodexResponsesRequestKind::Turn,
+        );
+        let request = client
+            .build_responses_request(
+                &setup.api_provider,
+                &prompt,
+                &model_info,
+                None,
+                codex_protocol::config_types::ReasoningSummary::None,
+                None,
+                &responses_metadata,
+            )
+            .expect("responses request should build");
+
+        let request_json = serde_json::to_value(&request).expect("request json");
+        assert_eq!(request_json["model"], json!(model_info.slug));
+        assert_eq!(request_json["tool_choice"], json!("auto"));
+        assert_eq!(request_json["parallel_tool_calls"], json!(true));
+        assert!(request_json.get("messages").is_none());
+        assert_eq!(request_json["tools"].as_array().expect("tools array").len(), 2);
+        assert_eq!(request_json["tools"][0]["type"], json!("function"));
+        assert_eq!(request_json["tools"][0]["name"], json!("shell_command"));
+        assert_eq!(request_json["tools"][1]["type"], json!("function"));
+        assert_eq!(request_json["tools"][1]["name"], json!("apply_patch"));
+        assert_eq!(request_json["tools"][1]["parameters"]["properties"]["patch"]["type"], json!("string"));
+        assert!(request_json["tools"]
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .all(|tool| tool["type"] == json!("function")));
+        assert_eq!(request_json["tools"], json!(expected_tools));
+        assert!(request_json["input"]
+            .as_array()
+            .expect("input array")
+            .iter()
+            .all(|item| item["type"] != json!("additional_tools")));
+    }
+
+    let model_info = test_model_info();
+    let responses_metadata = test_responses_metadata_for_client(
+        &client,
+        /*turn_id*/ None,
+        format!("{}:1", client.state.thread_id),
+        /*parent_thread_id*/ None,
+        TestCodexResponsesRequestKind::Turn,
+    );
+    let request = client
+        .build_responses_request(
+            &setup.api_provider,
+            &prompt,
+            &model_info,
+            None,
+            codex_protocol::config_types::ReasoningSummary::None,
+            None,
+            &responses_metadata,
+        )
+        .expect("control responses request should build");
+    let request_json = serde_json::to_value(&request).expect("request json");
+    assert_eq!(request_json["tools"], json!(expected_tools));
+    assert!(request_json.get("messages").is_none());
+    assert!(request_json["input"]
+        .as_array()
+        .expect("input array")
+        .iter()
+        .all(|item| item["type"] != json!("additional_tools")));
 }
 
 #[tokio::test]

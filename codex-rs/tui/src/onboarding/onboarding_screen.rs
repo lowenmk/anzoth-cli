@@ -17,6 +17,7 @@ use codex_exec_server::LOCAL_FS;
 use codex_git_utils::resolve_root_git_project_for_trust;
 #[cfg(target_os = "windows")]
 use codex_protocol::config_types::WindowsSandboxLevel;
+use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -112,6 +113,7 @@ impl OnboardingScreen {
         } = args;
         let cwd = config.cwd.to_path_buf();
         let forced_login_method = config.forced_login_method;
+        let anzoth_api_key_only_flow = config.model_provider_id == ANZOTH_PROVIDER_ID;
         let mut steps: Vec<Step> = Vec::new();
         steps.push(Step::Welcome(WelcomeWidget::new(
             !matches!(login_status, LoginStatus::NotAuthenticated),
@@ -119,22 +121,35 @@ impl OnboardingScreen {
             config.animations,
         )));
         if show_login_screen {
-            let highlighted_mode = match forced_login_method {
-                Some(ForcedLoginMethod::Api) => SignInOption::ApiKey,
-                _ => SignInOption::ChatGpt,
+            let highlighted_mode = if anzoth_api_key_only_flow {
+                SignInOption::ApiKey
+            } else {
+                match forced_login_method {
+                    Some(ForcedLoginMethod::Api) => SignInOption::ApiKey,
+                    _ => SignInOption::ChatGpt,
+                }
             };
             if let Some(app_server_request_handle) = app_server_request_handle {
-                steps.push(Step::Auth(AuthModeWidget {
+                let mut auth_widget = AuthModeWidget {
                     request_frame: tui.frame_requester(),
                     highlighted_mode,
                     error: Arc::new(RwLock::new(None)),
-                    sign_in_state: Arc::new(RwLock::new(SignInState::PickMode)),
+                    sign_in_state: Arc::new(RwLock::new(if anzoth_api_key_only_flow {
+                        SignInState::ApiKeyEntry(Default::default())
+                    } else {
+                        SignInState::PickMode
+                    })),
                     login_status,
                     app_server_request_handle,
                     forced_login_method,
+                    anzoth_api_key_only_flow,
                     animations_enabled: config.animations,
                     animations_suppressed: std::cell::Cell::new(false),
-                }));
+                };
+                if anzoth_api_key_only_flow {
+                    auth_widget.start_api_key_entry();
+                }
+                steps.push(Step::Auth(auth_widget));
             } else {
                 tracing::warn!("skipping onboarding login step without app-server request handle");
             }
@@ -629,14 +644,109 @@ mod tests {
     use super::StepStateProvider;
     use super::persist_selected_trust;
     use super::suppress_quit_while_typing_api_key;
+    use crate::onboarding::auth::AuthModeWidget;
+    use crate::onboarding::auth::ApiKeyInputState;
+    use crate::onboarding::auth::SignInOption;
+    use crate::onboarding::auth::SignInState;
+    use crate::onboarding::welcome::WelcomeWidget;
+    use crate::LoginStatus;
+    use crate::tui::FrameRequester;
+    use codex_app_server_client::AppServerRequestHandle;
+    use codex_app_server_client::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
+    use codex_app_server_client::InProcessAppServerClient;
+    use codex_app_server_client::InProcessClientStartArgs;
+    use codex_arg0::Arg0DispatchPaths;
+    use codex_cloud_config::cloud_config_bundle_loader_for_storage;
+    use codex_config::types::AuthCredentialsStoreMode;
+    use codex_login::AuthKeyringBackendKind;
     use crate::onboarding::trust_directory::TrustDirectorySelection;
     use crate::onboarding::trust_directory::TrustDirectoryWidget;
-    use crate::tui::FrameRequester;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use crossterm::event::KeyModifiers;
+    use ratatui::buffer::Buffer;
+    use ratatui::layout::Rect;
+    use ratatui::widgets::WidgetRef;
     use pretty_assertions::assert_eq;
+    use std::sync::Arc;
+    use std::sync::RwLock;
     use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    async fn build_anzoth_screen() -> (OnboardingScreen, TempDir) {
+        let codex_home = TempDir::new().unwrap();
+        let codex_home_path = codex_home.path().to_path_buf();
+        let config = crate::legacy_core::config::ConfigBuilder::default()
+            .codex_home(codex_home_path.clone())
+            .build()
+            .await
+            .unwrap();
+        let client = InProcessAppServerClient::start(InProcessClientStartArgs {
+            arg0_paths: Arg0DispatchPaths::default(),
+            config: Arc::new(config),
+            cli_overrides: Vec::new(),
+            loader_overrides: Default::default(),
+            strict_config: false,
+            cloud_config_bundle: cloud_config_bundle_loader_for_storage(
+                codex_home_path.clone(),
+                /*enable_codex_api_key_env*/ false,
+                AuthCredentialsStoreMode::File,
+                AuthKeyringBackendKind::default(),
+                "https://chatgpt.com/backend-api/".to_string(),
+                /*auth_route_config*/ None,
+            )
+            .await,
+            feedback: codex_feedback::CodexFeedback::new(),
+            log_db: None,
+            state_db: None,
+            environment_manager: Arc::new(
+                codex_app_server_client::EnvironmentManager::default_for_tests(),
+            ),
+            config_warnings: Vec::new(),
+            session_source: serde_json::from_value(serde_json::json!("cli"))
+                .expect("cli session source should deserialize"),
+            enable_codex_api_key_env: false,
+            client_name: "test".to_string(),
+            client_version: "test".to_string(),
+            experimental_api: true,
+            mcp_server_openai_form_elicitation: false,
+            opt_out_notification_methods: Vec::new(),
+            channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        })
+        .await
+        .unwrap();
+
+        let auth_widget = AuthModeWidget {
+            request_frame: FrameRequester::test_dummy(),
+            highlighted_mode: SignInOption::ApiKey,
+            error: Arc::new(RwLock::new(None)),
+            sign_in_state: Arc::new(RwLock::new(SignInState::ApiKeyEntry(
+                ApiKeyInputState::default(),
+            ))),
+            login_status: LoginStatus::NotAuthenticated,
+            app_server_request_handle: AppServerRequestHandle::InProcess(client.request_handle()),
+            forced_login_method: Some(codex_protocol::config_types::ForcedLoginMethod::Api),
+            anzoth_api_key_only_flow: true,
+            animations_enabled: false,
+            animations_suppressed: std::cell::Cell::new(false),
+        };
+
+        let screen = OnboardingScreen {
+            request_frame: FrameRequester::test_dummy(),
+            steps: vec![
+                Step::Welcome(WelcomeWidget::new(
+                    false,
+                    FrameRequester::test_dummy(),
+                    false,
+                )),
+                Step::Auth(auth_widget),
+            ],
+            is_done: false,
+            should_exit: false,
+        };
+
+        (screen, codex_home)
+    }
 
     #[test]
     fn suppresses_printable_quit_key_during_api_key_entry() {
@@ -718,5 +828,32 @@ mod tests {
                 .as_deref()
                 .is_some_and(|error| error.contains("app server unavailable"))
         );
+    }
+
+    #[tokio::test]
+    async fn anzoth_onboarding_screen_renders_anzoth_only_copy() {
+        let (screen, _tmp) = build_anzoth_screen().await;
+        let area = Rect::new(0, 0, 100, 30);
+        let mut buf = Buffer::empty(area);
+
+        (&screen).render_ref(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+
+        assert!(rendered.contains("Welcome to Anzoth CLI"));
+        assert!(rendered.contains("Connect using your Anzoth API key"));
+        assert!(rendered.contains("Enter Anzoth API key"));
+        assert!(!rendered.contains("Welcome to Codex"));
+        assert!(!rendered.contains("OpenAI"));
+        assert!(!rendered.contains("ChatGPT"));
+        assert!(!rendered.contains("Pay for what you use"));
+        assert!(!rendered.contains("Provide your own API key"));
+        assert!(!rendered.contains("Sign in with ChatGPT"));
     }
 }

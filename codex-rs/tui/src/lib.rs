@@ -1343,7 +1343,9 @@ async fn run_ratatui_app(
         !uses_remote_workspace && should_show_trust_screen(&initial_config);
     #[cfg(target_os = "windows")]
     let mut trust_decision_was_made = false;
-    let login_status = if initial_config.model_provider.requires_openai_auth {
+    let provider_requires_onboarding_login = initial_config.model_provider.requires_openai_auth
+        || initial_config.model_provider.env_key.is_some();
+    let login_status = if provider_requires_onboarding_login {
         let Some(app_server) = app_server.as_mut() else {
             unreachable!("app server should exist when auth is required");
         };
@@ -1956,9 +1958,10 @@ fn should_show_onboarding(
 }
 
 fn should_show_login_screen(login_status: LoginStatus, config: &Config) -> bool {
-    // Only show the login screen for providers that actually require OpenAI auth
-    // (OpenAI or equivalents). For OSS/other providers, skip login entirely.
-    if !config.model_provider.requires_openai_auth {
+    // Only show the login screen for providers that need an onboarding auth step.
+    // Providers that expose an env-backed API key should still surface onboarding
+    // when no auth is available yet, but OSS/other providers continue to skip login.
+    if !(config.model_provider.requires_openai_auth || config.model_provider.env_key.is_some()) {
         return false;
     }
 
@@ -3050,6 +3053,24 @@ trust_level = "untrusted"
             config.startup_warnings[0].contains("bogus-theme"),
             "warning should reference the final config's theme name"
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn env_key_providers_show_onboarding_login_screen() -> std::io::Result<()> {
+        let temp_dir = TempDir::new()?;
+        let mut config = build_config(&temp_dir).await?;
+        config.model_provider.requires_openai_auth = false;
+        config.model_provider.env_key = Some("ANZOTH_API_KEY".to_string());
+
+        assert!(should_show_login_screen(
+            LoginStatus::NotAuthenticated,
+            &config
+        ));
+        assert!(!should_show_login_screen(
+            LoginStatus::AuthMode(codex_protocol::auth::AuthMode::ApiKey),
+            &config
+        ));
         Ok(())
     }
 }

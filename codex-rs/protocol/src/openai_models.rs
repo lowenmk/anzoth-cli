@@ -281,10 +281,11 @@ pub enum ConfigShellToolType {
     ShellCommand,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, TS, JsonSchema)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, TS, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ApplyPatchToolType {
     Freeform,
+    Function,
 }
 
 #[derive(
@@ -1116,6 +1117,25 @@ mod tests {
         assert_eq!(model.comp_hash, None);
         assert_eq!(model.auto_review_model_override, None);
         assert_eq!(model.tool_mode, None);
+    }
+
+    #[test]
+    fn apply_patch_tool_type_supports_freeform_and_function() {
+        assert_eq!(
+            serde_json::from_str::<ApplyPatchToolType>(r#""freeform""#)
+                .expect("freeform should deserialize"),
+            ApplyPatchToolType::Freeform
+        );
+        assert_eq!(
+            serde_json::from_str::<ApplyPatchToolType>(r#""function""#)
+                .expect("function should deserialize"),
+            ApplyPatchToolType::Function
+        );
+        assert_eq!(
+            serde_json::to_string(&ApplyPatchToolType::Function)
+                .expect("function should serialize"),
+            r#""function""#
+        );
     }
 
     #[test]

@@ -13,6 +13,8 @@ use crate::external_agent_config_migration_flow::ExternalAgentConfigMigrationFlo
 use codex_config::types::WindowsSandboxModeToml;
 
 const SHUTDOWN_FIRST_EXIT_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 2);
+const SANDBOX_READY_MESSAGE: &str =
+    "Anzoth can now safely edit files and execute commands on your computer";
 
 impl App {
     pub(super) async fn handle_event(
@@ -1558,7 +1560,7 @@ impl App {
                                     Line::from(vec!["• ".dim(), "Sandbox ready".into()]),
                                     Line::from(vec![
                                         "  ".into(),
-                                        "Codex can now safely edit files and execute commands in your computer"
+                                        SANDBOX_READY_MESSAGE
                                             .dark_gray(),
                                     ]),
                                 ]);
@@ -1591,7 +1593,7 @@ impl App {
                                     Line::from(vec!["• ".dim(), "Sandbox ready".into()]),
                                     Line::from(vec![
                                         "  ".into(),
-                                        "Codex can now safely edit files and execute commands in your computer"
+                                        SANDBOX_READY_MESSAGE
                                             .dark_gray(),
                                     ]),
                                 ]);
@@ -2515,5 +2517,19 @@ impl App {
                 AppRunControl::Continue
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SANDBOX_READY_MESSAGE;
+
+    #[test]
+    fn sandbox_ready_message_uses_anzoth_branding() {
+        assert!(SANDBOX_READY_MESSAGE.contains("Anzoth"));
+        assert!(SANDBOX_READY_MESSAGE.contains("on your computer"));
+        assert!(!SANDBOX_READY_MESSAGE.contains("Codex"));
+        assert!(!SANDBOX_READY_MESSAGE.contains("OpenAI"));
+        assert!(!SANDBOX_READY_MESSAGE.contains("ChatGPT"));
     }
 }

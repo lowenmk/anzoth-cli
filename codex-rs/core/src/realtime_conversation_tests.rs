@@ -6,9 +6,14 @@ use super::realtime_text_from_handoff_request;
 use super::wrap_realtime_delegation_input;
 use async_channel::bounded;
 use codex_api::RealtimeEventParser;
+use codex_model_provider_info::ModelProviderInfo;
 use codex_protocol::protocol::RealtimeHandoffRequested;
 use codex_protocol::protocol::RealtimeTranscriptEntry;
 use pretty_assertions::assert_eq;
+use serial_test::serial;
+use std::env;
+
+const ANZOTH_API_KEY_ENV_VAR: &str = "ANZOTH_API_KEY";
 
 #[test]
 fn prefers_handoff_input_transcript_over_active_transcript() {
@@ -222,4 +227,74 @@ fn realtime_headers_include_only_non_default_originator() {
             expected_header
         );
     }
+}
+
+struct EnvVarGuard {
+    key: &'static str,
+    original: Option<std::ffi::OsString>,
+}
+
+impl EnvVarGuard {
+    fn set(key: &'static str, value: &str) -> Self {
+        let original = env::var_os(key);
+        unsafe {
+            env::set_var(key, value);
+        }
+        Self { key, original }
+    }
+
+    fn remove(key: &'static str) -> Self {
+        let original = env::var_os(key);
+        unsafe {
+            env::remove_var(key);
+        }
+        Self { key, original }
+    }
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        unsafe {
+            match &self.original {
+                Some(value) => env::set_var(self.key, value),
+                None => env::remove_var(self.key),
+            }
+        }
+    }
+}
+
+#[test]
+#[serial(realtime_api_key_env)]
+fn realtime_api_key_prefers_env_over_stored_auth() {
+    let _env_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz_env_key");
+    let provider = ModelProviderInfo::create_anzoth_provider(None);
+    let auth = codex_login::CodexAuth::from_api_key("anz_stored_key");
+
+    let api_key = super::realtime_api_key(Some(&auth), &provider).expect("api key");
+
+    assert_eq!(api_key, "anz_env_key");
+}
+
+#[test]
+#[serial(realtime_api_key_env)]
+fn realtime_api_key_uses_stored_auth_when_env_missing() {
+    let _env_guard = EnvVarGuard::remove(ANZOTH_API_KEY_ENV_VAR);
+    let provider = ModelProviderInfo::create_anzoth_provider(None);
+    let auth = codex_login::CodexAuth::from_api_key("anz_stored_key");
+
+    let api_key = super::realtime_api_key(Some(&auth), &provider).expect("api key");
+
+    assert_eq!(api_key, "anz_stored_key");
+}
+
+#[test]
+#[serial(realtime_api_key_env)]
+fn realtime_api_key_ignores_empty_env_and_uses_stored_auth() {
+    let _env_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "");
+    let provider = ModelProviderInfo::create_anzoth_provider(None);
+    let auth = codex_login::CodexAuth::from_api_key("anz_stored_key");
+
+    let api_key = super::realtime_api_key(Some(&auth), &provider).expect("api key");
+
+    assert_eq!(api_key, "anz_stored_key");
 }

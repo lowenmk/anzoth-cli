@@ -1400,7 +1400,22 @@ fn read_openai_api_key_from_env_prefers_anzoth_key() {
     let _anzoth_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz-test-key");
     let _openai_guard = EnvVarGuard::set(OPENAI_API_KEY_ENV_VAR, "sk-openai-test");
 
-    assert_eq!(super::read_openai_api_key_from_env(), Some("anz-test-key".to_string()));
+    assert_eq!(
+        super::read_openai_api_key_from_env(),
+        Some("anz-test-key".to_string())
+    );
+}
+
+#[test]
+#[serial(codex_auth_env)]
+fn read_codex_api_key_from_env_prefers_anzoth_key() {
+    let _anzoth_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz-test-key");
+    let _openai_guard = EnvVarGuard::set(OPENAI_API_KEY_ENV_VAR, "sk-openai-test");
+
+    assert_eq!(
+        super::read_codex_api_key_from_env(),
+        Some("anz-test-key".to_string())
+    );
 }
 
 #[tokio::test]

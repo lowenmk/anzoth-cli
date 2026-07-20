@@ -1178,7 +1178,7 @@ fn escape_xml_text(input: &str) -> String {
 }
 
 fn realtime_api_key(auth: Option<&CodexAuth>, provider: &ModelProviderInfo) -> CodexResult<String> {
-    if let Some(api_key) = provider.api_key()? {
+    if let Some(api_key) = provider_env_api_key(provider) {
         return Ok(api_key);
     }
 
@@ -1201,6 +1201,13 @@ fn realtime_api_key(auth: Option<&CodexAuth>, provider: &ModelProviderInfo) -> C
     Err(CodexErr::InvalidRequest(
         "realtime conversation requires API key auth".to_string(),
     ))
+}
+
+fn provider_env_api_key(provider: &ModelProviderInfo) -> Option<String> {
+    let env_key = provider.env_key.as_deref()?;
+    std::env::var(env_key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn realtime_request_headers(

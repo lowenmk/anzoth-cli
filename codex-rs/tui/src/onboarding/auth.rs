@@ -232,6 +232,7 @@ pub(crate) struct AuthModeWidget {
     pub login_status: LoginStatus,
     pub app_server_request_handle: AppServerRequestHandle,
     pub forced_login_method: Option<ForcedLoginMethod>,
+    pub anzoth_api_key_only_flow: bool,
     pub animations_enabled: bool,
     pub animations_suppressed: Cell<bool>,
 }
@@ -248,8 +249,21 @@ impl AuthModeWidget {
         )
     }
 
+    fn is_anzoth_api_key_only_flow(&self) -> bool {
+        self.anzoth_api_key_only_flow
+    }
+
     pub(crate) fn cancel_active_attempt(&self) {
         let mut sign_in_state = self.sign_in_state.write().unwrap();
+        if self.is_anzoth_api_key_only_flow() {
+            self.set_error(None);
+            if !matches!(&*sign_in_state, SignInState::ApiKeyEntry(_)) {
+                *sign_in_state = SignInState::ApiKeyEntry(ApiKeyInputState::default());
+            }
+            drop(sign_in_state);
+            self.request_frame.schedule_frame();
+            return;
+        }
         match &*sign_in_state {
             SignInState::ChatGptContinueInBrowser(state) => {
                 let request_handle = self.app_server_request_handle.clone();
@@ -305,14 +319,18 @@ impl AuthModeWidget {
     }
 
     fn is_api_login_allowed(&self) -> bool {
-        !matches!(self.forced_login_method, Some(ForcedLoginMethod::Chatgpt))
+        self.is_anzoth_api_key_only_flow() || !matches!(self.forced_login_method, Some(ForcedLoginMethod::Chatgpt))
     }
 
     fn is_chatgpt_login_allowed(&self) -> bool {
-        !matches!(self.forced_login_method, Some(ForcedLoginMethod::Api))
+        !self.is_anzoth_api_key_only_flow()
+            && !matches!(self.forced_login_method, Some(ForcedLoginMethod::Api))
     }
 
     fn displayed_sign_in_options(&self) -> Vec<SignInOption> {
+        if self.is_anzoth_api_key_only_flow() {
+            return vec![SignInOption::ApiKey];
+        }
         let mut options = vec![SignInOption::ChatGpt];
         if self.is_chatgpt_login_allowed() {
             options.push(SignInOption::DeviceCode);
@@ -324,6 +342,9 @@ impl AuthModeWidget {
     }
 
     fn selectable_sign_in_options(&self) -> Vec<SignInOption> {
+        if self.is_anzoth_api_key_only_flow() {
+            return vec![SignInOption::ApiKey];
+        }
         let mut options = Vec::new();
         if self.is_chatgpt_login_allowed() {
             options.push(SignInOption::ChatGpt);
@@ -387,6 +408,32 @@ impl AuthModeWidget {
     }
 
     fn render_pick_mode(&self, area: Rect, buf: &mut Buffer) {
+        if self.is_anzoth_api_key_only_flow() {
+            let mut lines: Vec<Line> = vec![
+                Line::from(vec![
+                    "  ".into(),
+                    "Connect using your Anzoth API key".bold(),
+                ]),
+                "".into(),
+                Line::from(vec!["  ".into(), "Enter Anzoth API key".into()]),
+                "".into(),
+            ];
+            lines.push(Line::from(vec![
+                "  Press ".dim(),
+                self.confirm_binding().into(),
+                " to continue".dim(),
+            ]));
+            if let Some(err) = self.error_message() {
+                lines.push("".into());
+                lines.push(err.red().into());
+            }
+
+            Paragraph::new(lines)
+                .wrap(Wrap { trim: false })
+                .render(area, buf);
+            return;
+        }
+
         let mut lines: Vec<Line> = vec![
             Line::from(vec![
                 "  ".into(),
@@ -604,9 +651,9 @@ impl AuthModeWidget {
 
     fn render_api_key_configured(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            "✓ API key configured".fg(Color::Green).into(),
+            "✓ Anzoth API key configured".fg(Color::Green).into(),
             "".into(),
-            "  Codex will use usage-based billing with your API key.".into(),
+            "  Anzoth CLI will use your API key.".into(),
         ];
 
         Paragraph::new(lines)
@@ -625,14 +672,15 @@ impl AuthModeWidget {
         let mut intro_lines: Vec<Line> = vec![
             Line::from(vec![
                 "> ".into(),
-                "Use your own OpenAI API key for usage-based billing".bold(),
+                "Connect using your Anzoth API key".bold(),
             ]),
             "".into(),
-            "  Paste or type your API key below. It will be stored locally in auth.json.".into(),
+            "  Paste or type your Anzoth API key below. It will be stored locally in auth.json."
+                .into(),
             "".into(),
         ];
         if state.prepopulated_from_env {
-            intro_lines.push("  Detected OPENAI_API_KEY environment variable.".into());
+            intro_lines.push("  Detected ANZOTH_API_KEY environment variable.".into());
             intro_lines.push(
                 "  Paste a different key if you prefer to use another account."
                     .dim()
@@ -645,15 +693,15 @@ impl AuthModeWidget {
             .render(intro_area, buf);
 
         let content_line: Line = if state.value.is_empty() {
-            vec!["Paste or type your API key".dim()].into()
+            vec!["Enter Anzoth API key".dim()].into()
         } else {
-            Line::from(state.value.clone())
+            Line::from(mask_api_key_value(&state.value))
         };
         Paragraph::new(content_line)
             .wrap(Wrap { trim: false })
             .block(
                 Block::default()
-                    .title("API key")
+                    .title("Enter Anzoth API key")
                     .borders(Borders::ALL)
                     .border_type(BorderType::Rounded)
                     .border_style(Style::default().fg(Color::Cyan)),
@@ -666,12 +714,14 @@ impl AuthModeWidget {
                 self.confirm_binding().into(),
                 " to save".dim(),
             ]),
-            Line::from(vec![
+        ];
+        if !self.is_anzoth_api_key_only_flow() {
+            footer_lines.push(Line::from(vec![
                 "  Press ".dim(),
                 self.cancel_binding().into(),
                 " to go back".dim(),
-            ]),
-        ];
+            ]));
+        }
         if let Some(error) = self.error_message() {
             footer_lines.push("".into());
             footer_lines.push(error.red().into());
@@ -689,13 +739,15 @@ impl AuthModeWidget {
             let mut guard = self.sign_in_state.write().unwrap();
             if let SignInState::ApiKeyEntry(state) = &mut *guard {
                 if keys::CANCEL.is_pressed(*key_event) {
-                    *guard = SignInState::PickMode;
+                    if !self.is_anzoth_api_key_only_flow() {
+                        *guard = SignInState::PickMode;
+                    }
                     self.set_error(/*message*/ None);
                     should_request_frame = true;
                 } else if keys::CONFIRM.is_pressed(*key_event) {
                     let trimmed = state.value.trim().to_string();
                     if trimmed.is_empty() {
-                        self.set_error(Some("API key cannot be empty".to_string()));
+                        self.set_error(Some("Anzoth API key cannot be empty.".to_string()));
                         should_request_frame = true;
                     } else {
                         should_save = Some(trimmed);
@@ -767,20 +819,29 @@ impl AuthModeWidget {
         true
     }
 
-    fn start_api_key_entry(&mut self) {
+    pub(crate) fn start_api_key_entry(&mut self) {
         if !self.is_api_login_allowed() {
             self.disallow_api_login();
             return;
         }
         self.set_error(/*message*/ None);
         let prefill_from_env = read_openai_api_key_from_env();
+        if let Some(prefill) = prefill_from_env.as_deref()
+            && let Err(message) = validate_anzoth_api_key(prefill)
+        {
+            self.set_error(Some(message.to_string()));
+        }
         let mut guard = self.sign_in_state.write().unwrap();
         match &mut *guard {
             SignInState::ApiKeyEntry(state) => {
                 if state.value.is_empty() {
-                    if let Some(prefill) = prefill_from_env {
-                        state.value = prefill;
-                        state.prepopulated_from_env = true;
+                    if let Some(prefill) = prefill_from_env.as_deref() {
+                        if validate_anzoth_api_key(prefill).is_ok() {
+                            state.value = prefill.to_string();
+                            state.prepopulated_from_env = true;
+                        } else {
+                            state.prepopulated_from_env = false;
+                        }
                     } else {
                         state.prepopulated_from_env = false;
                     }
@@ -788,8 +849,14 @@ impl AuthModeWidget {
             }
             _ => {
                 *guard = SignInState::ApiKeyEntry(ApiKeyInputState {
-                    value: prefill_from_env.clone().unwrap_or_default(),
-                    prepopulated_from_env: prefill_from_env.is_some(),
+                    value: prefill_from_env
+                        .as_deref()
+                        .filter(|prefill| validate_anzoth_api_key(prefill).is_ok())
+                        .map(str::to_string)
+                        .unwrap_or_default(),
+                    prepopulated_from_env: prefill_from_env
+                        .as_deref()
+                        .is_some_and(|prefill| validate_anzoth_api_key(prefill).is_ok()),
                 });
             }
         }
@@ -800,6 +867,11 @@ impl AuthModeWidget {
     fn save_api_key(&mut self, api_key: String) {
         if !self.is_api_login_allowed() {
             self.disallow_api_login();
+            return;
+        }
+        if let Err(message) = validate_anzoth_api_key(&api_key) {
+            self.set_error(Some(message.to_string()));
+            self.request_frame.schedule_frame();
             return;
         }
         self.set_error(/*message*/ None);
@@ -1005,6 +1077,24 @@ impl WidgetRef for AuthModeWidget {
     }
 }
 
+fn mask_api_key_value(api_key: &str) -> String {
+    if api_key.is_empty() {
+        return String::new();
+    }
+    "*".repeat(api_key.chars().count())
+}
+
+fn validate_anzoth_api_key(api_key: &str) -> Result<(), &'static str> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("Anzoth API key cannot be empty.");
+    }
+    if !api_key.starts_with("anz_") {
+        return Err("Anzoth API keys must start with `anz_`.");
+    }
+    Ok(())
+}
+
 pub(super) fn maybe_open_auth_url_in_browser(request_handle: &AppServerRequestHandle, url: &str) {
     if !matches!(request_handle, AppServerRequestHandle::InProcess(_)) {
         return;
@@ -1082,6 +1172,66 @@ mod tests {
             login_status: LoginStatus::NotAuthenticated,
             app_server_request_handle: AppServerRequestHandle::InProcess(client.request_handle()),
             forced_login_method: Some(ForcedLoginMethod::Chatgpt),
+            anzoth_api_key_only_flow: false,
+            animations_enabled: true,
+            animations_suppressed: std::cell::Cell::new(false),
+        };
+        (widget, codex_home)
+    }
+
+    async fn widget_forced_anzoth() -> (AuthModeWidget, TempDir) {
+        let codex_home = TempDir::new().unwrap();
+        let codex_home_path = codex_home.path().to_path_buf();
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home_path.clone())
+            .build()
+            .await
+            .unwrap();
+        let client = InProcessAppServerClient::start(InProcessClientStartArgs {
+            arg0_paths: Arg0DispatchPaths::default(),
+            config: Arc::new(config),
+            cli_overrides: Vec::new(),
+            loader_overrides: Default::default(),
+            strict_config: false,
+            cloud_config_bundle: cloud_config_bundle_loader_for_storage(
+                codex_home_path.clone(),
+                /*enable_codex_api_key_env*/ false,
+                AuthCredentialsStoreMode::File,
+                AuthKeyringBackendKind::default(),
+                "https://chatgpt.com/backend-api/".to_string(),
+                /*auth_route_config*/ None,
+            )
+            .await,
+            feedback: codex_feedback::CodexFeedback::new(),
+            log_db: None,
+            state_db: None,
+            environment_manager: Arc::new(
+                codex_app_server_client::EnvironmentManager::default_for_tests(),
+            ),
+            config_warnings: Vec::new(),
+            session_source: serde_json::from_value(serde_json::json!("cli"))
+                .expect("cli session source should deserialize"),
+            enable_codex_api_key_env: false,
+            client_name: "test".to_string(),
+            client_version: "test".to_string(),
+            experimental_api: true,
+            mcp_server_openai_form_elicitation: false,
+            opt_out_notification_methods: Vec::new(),
+            channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        })
+        .await
+        .unwrap();
+        let widget = AuthModeWidget {
+            request_frame: FrameRequester::test_dummy(),
+            highlighted_mode: SignInOption::ApiKey,
+            error: Arc::new(RwLock::new(None)),
+            sign_in_state: Arc::new(RwLock::new(SignInState::ApiKeyEntry(
+                ApiKeyInputState::default(),
+            ))),
+            login_status: LoginStatus::NotAuthenticated,
+            app_server_request_handle: AppServerRequestHandle::InProcess(client.request_handle()),
+            forced_login_method: Some(ForcedLoginMethod::Api),
+            anzoth_api_key_only_flow: true,
             animations_enabled: true,
             animations_suppressed: std::cell::Cell::new(false),
         };
@@ -1119,6 +1269,48 @@ mod tests {
             SignInState::PickMode
         ));
         assert_eq!(widget.login_status, LoginStatus::NotAuthenticated);
+    }
+
+    #[test]
+    fn validate_anzoth_api_key_accepts_only_anzoth_keys() {
+        assert_eq!(validate_anzoth_api_key("anz_abc123"), Ok(()));
+        assert_eq!(
+            validate_anzoth_api_key(""),
+            Err("Anzoth API key cannot be empty.")
+        );
+        assert_eq!(
+            validate_anzoth_api_key("not-anzoth"),
+            Err("Anzoth API keys must start with `anz_`.")
+        );
+    }
+
+    #[tokio::test]
+    async fn anzoth_api_key_render_masks_input_and_uses_anzoth_copy() {
+        let (widget, _tmp) = widget_forced_anzoth().await;
+        if let SignInState::ApiKeyEntry(state) = &mut *widget.sign_in_state.write().unwrap() {
+            state.value = "anz_test_secret_value".to_string();
+            state.prepopulated_from_env = false;
+        }
+        let area = Rect::new(0, 0, 80, 20);
+        let mut buf = Buffer::empty(area);
+
+        widget.render_ref(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+
+        assert!(rendered.contains("Connect using your Anzoth API key"));
+        assert!(rendered.contains("Enter Anzoth API key"));
+        assert!(!rendered.contains("Welcome to Codex"));
+        assert!(!rendered.contains("OpenAI"));
+        assert!(!rendered.contains("ChatGPT"));
+        assert!(!rendered.contains("Pay for what you use"));
+        assert!(!rendered.contains("anz_test_secret_value"));
     }
 
     #[tokio::test]

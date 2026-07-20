@@ -208,6 +208,11 @@ pub async fn run_login_with_api_key(
         std::process::exit(1);
     }
 
+    if let Err(message) = validate_anzoth_api_key(&api_key) {
+        eprintln!("{message}");
+        std::process::exit(1);
+    }
+
     match login_with_api_key(
         &config.codex_home,
         &api_key,
@@ -271,10 +276,22 @@ pub fn read_api_key_from_stdin() -> String {
 
 pub fn read_access_token_from_stdin() -> String {
     read_stdin_secret(
-        "--with-access-token expects the access token on stdin. Try piping it, e.g. `printenv CODEX_ACCESS_TOKEN | codex login --with-access-token`.",
+        "--with-access-token expects the access token on stdin. Try piping it, e.g. `printenv CODEX_ACCESS_TOKEN | anzoth login --with-access-token`.",
         "Reading access token from stdin...",
         "No access token provided via stdin.",
     )
+}
+
+fn validate_anzoth_api_key(api_key: &str) -> Result<(), &'static str> {
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err("No API key provided via stdin.");
+    }
+    if !api_key.starts_with("anz_") {
+        return Err("API key must start with `anz_`.");
+    }
+
+    Ok(())
 }
 
 fn read_stdin_secret(terminal_message: &str, reading_message: &str, empty_message: &str) -> String {

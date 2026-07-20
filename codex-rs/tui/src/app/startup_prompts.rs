@@ -5,6 +5,7 @@
 
 use super::*;
 use codex_config::ConfigLayerSource;
+use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
@@ -276,6 +277,10 @@ pub(super) async fn handle_model_migration_prompt_if_needed(
     app_event_tx: &AppEventSender,
     available_models: &[ModelPreset],
 ) -> Option<AppExitInfo> {
+    if config.model_provider_id == ANZOTH_PROVIDER_ID {
+        return None;
+    }
+
     let upgrade = available_models
         .iter()
         .find(|preset| preset.model == model)
@@ -375,9 +380,11 @@ pub(super) fn normalize_harness_overrides_for_cwd(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::legacy_core::config::ConfigBuilder;
     use crate::test_support::PathBufExt;
     use pretty_assertions::assert_eq;
     use ratatui::text::Line;
+    use serial_test::serial;
     use std::path::PathBuf;
     use tempfile::tempdir;
     use tokio::sync::mpsc::unbounded_channel;
@@ -521,5 +528,34 @@ mod tests {
 ⚠ Skipped loading 1 skill(s) due to invalid SKILL.md files.
 ⚠ /repo/.codex/skills/abc/SKILL.md: invalid description
 ");
+    }
+
+    #[tokio::test]
+    #[serial(anzoth_model_migration)]
+    async fn skips_model_migration_prompt_for_anzoth_provider() -> anyhow::Result<()> {
+        let temp_dir = tempdir()?;
+        let mut config = ConfigBuilder::default()
+            .codex_home(temp_dir.path().to_path_buf())
+            .build()
+            .await?;
+        config.model_provider_id = ANZOTH_PROVIDER_ID.to_string();
+
+        let presets = crate::test_support::TEST_MODEL_PRESETS.clone();
+        let mut tui = crate::tui::test_support::make_test_tui()?;
+        let (tx_raw, _rx) = unbounded_channel();
+        let app_event_tx = AppEventSender::new(tx_raw);
+
+        let exit = handle_model_migration_prompt_if_needed(
+            &mut tui,
+            &mut config,
+            "gpt-5.2",
+            &app_event_tx,
+            &presets,
+        )
+        .await;
+
+        assert!(exit.is_none());
+        assert_eq!(config.model_provider_id, ANZOTH_PROVIDER_ID);
+        Ok(())
     }
 }

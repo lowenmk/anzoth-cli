@@ -107,7 +107,7 @@ env_http_headers = { "X-Example-Env-Header" = "EXAMPLE_ENV_VAR" }
 }
 
 #[test]
-fn test_deserialize_chat_wire_api_shows_helpful_error() {
+fn test_deserialize_chat_wire_api_is_supported() {
     let provider_toml = r#"
 name = "OpenAI using Chat Completions"
 base_url = "https://api.openai.com/v1"
@@ -115,8 +115,8 @@ env_key = "OPENAI_API_KEY"
 wire_api = "chat"
         "#;
 
-    let err = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap_err();
-    assert!(err.to_string().contains(CHAT_WIRE_API_REMOVED_ERROR));
+    let provider = toml::from_str::<ModelProviderInfo>(provider_toml).unwrap();
+    assert_eq!(provider.wire_api, WireApi::Chat);
 }
 
 #[test]
@@ -323,8 +323,8 @@ fn test_amazon_bedrock_provider_adds_mantle_client_agent_header() {
     assert_eq!(
         api_provider
             .headers
-        .get(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER)
-        .and_then(|value| value.to_str().ok()),
+            .get(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_HEADER)
+            .and_then(|value| value.to_str().ok()),
         Some(AMAZON_BEDROCK_MANTLE_CLIENT_AGENT_VALUE)
     );
 }

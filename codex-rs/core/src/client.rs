@@ -33,6 +33,8 @@ use std::sync::atomic::Ordering;
 use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::AuthProvider;
+use codex_api::ChatCompletionsClient as ApiChatCompletionsClient;
+use codex_api::ChatCompletionsOptions as ApiChatCompletionsOptions;
 use codex_api::CompactClient as ApiCompactClient;
 use codex_api::CompactionInput as ApiCompactionInput;
 use codex_api::Compression;
@@ -78,6 +80,7 @@ use codex_protocol::ThreadId;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
 use codex_protocol::config_types::Verbosity as VerbosityConfig;
 use codex_protocol::models::ContentItem;
+use codex_protocol::models::ImageDetail;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
@@ -907,6 +910,147 @@ impl ModelClient {
         Ok(request)
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn build_chat_completions_request(
+        &self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        _effort: Option<ReasoningEffortConfig>,
+        _summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let messages = self.build_chat_messages(prompt, model_info.use_responses_lite)?;
+        let tools = self.build_chat_tools_json(&prompt.tools)?;
+        let service_tier = model_info.service_tier_for_request(service_tier);
+        let response_format = prompt.output_schema.as_ref().map(|schema| {
+            serde_json::json!({
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "codex_output_schema",
+                    "schema": schema,
+                    "strict": prompt.output_schema_strict,
+                }
+            })
+        });
+
+        let mut request = serde_json::json!({
+            "model": model_info.slug,
+            "messages": messages,
+            "stream": true,
+            "tool_choice": "auto",
+            "parallel_tool_calls": prompt.parallel_tool_calls,
+        });
+
+        if let Some(tools) = tools {
+            request["tools"] = serde_json::Value::Array(tools);
+        }
+        if let Some(service_tier) = service_tier {
+            request["service_tier"] = serde_json::Value::String(service_tier);
+        }
+        if let Some(response_format) = response_format {
+            request["response_format"] = response_format;
+        }
+
+        // Keep the request deterministic for tests and request tracing.
+        if let Some(messages) = request.get_mut("messages").and_then(serde_json::Value::as_array_mut)
+        {
+            messages.shrink_to_fit();
+        }
+
+        Ok(request)
+    }
+
+    fn build_chat_messages(
+        &self,
+        prompt: &Prompt,
+        use_responses_lite: bool,
+    ) -> Result<Vec<serde_json::Value>> {
+        let mut messages = Vec::new();
+        if !prompt.base_instructions.text.is_empty() {
+            messages.push(serde_json::json!({
+                "role": "system",
+                "content": prompt.base_instructions.text,
+            }));
+        }
+
+        for item in prompt.get_formatted_input_for_request(use_responses_lite) {
+            if let Some(message) = chat_message_from_response_item(&item)? {
+                messages.push(message);
+            }
+        }
+
+        Ok(messages)
+    }
+
+    fn build_chat_tools_json(
+        &self,
+        tools: &[codex_tools::ToolSpec],
+    ) -> Result<Option<Vec<serde_json::Value>>> {
+        let mut serialized_tools = Vec::new();
+
+        for tool in tools {
+            match tool {
+                codex_tools::ToolSpec::Function(tool) => {
+                    serialized_tools.push(serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": tool.parameters,
+                        },
+                    }));
+                }
+                codex_tools::ToolSpec::Namespace(namespace) => {
+                    for tool in &namespace.tools {
+                        let codex_tools::ResponsesApiNamespaceTool::Function(tool) = tool;
+                        serialized_tools.push(serde_json::json!({
+                            "type": "function",
+                            "function": {
+                                "name": format!("{}{}", namespace.name, tool.name),
+                                "description": tool.description,
+                                "parameters": tool.parameters,
+                            },
+                        }));
+                    }
+                }
+                codex_tools::ToolSpec::ToolSearch {
+                    description,
+                    parameters,
+                    ..
+                } => {
+                    serialized_tools.push(serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": "tool_search",
+                            "description": description,
+                            "parameters": parameters,
+                        },
+                    }));
+                }
+                codex_tools::ToolSpec::Freeform(tool) => {
+                    serialized_tools.push(serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": {
+                                "type": "object",
+                                "properties": {},
+                                "additionalProperties": false,
+                            },
+                        },
+                    }));
+                }
+                codex_tools::ToolSpec::WebSearch { .. } => {
+                    // The current Anzoth backend is only known to support generic function
+                    // calling. Keep web-search out of the active chat payload for now.
+                }
+            }
+        }
+
+        Ok((!serialized_tools.is_empty()).then_some(serialized_tools))
+    }
+
     fn prepare_response_items_for_request(&self, input: &mut [ResponseItem], store: bool) {
         for item in input.iter_mut() {
             if item.id().is_some_and(|id| !id.is_prefixed()) {
@@ -922,7 +1066,147 @@ impl ModelClient {
             item.set_id(/*new_id*/ None);
         }
     }
+}
 
+fn chat_message_from_response_item(item: &ResponseItem) -> Result<Option<serde_json::Value>> {
+    let message = match item {
+        ResponseItem::Message { role, content, .. } => {
+            let role = match role.as_str() {
+                "developer" => "system",
+                other => other,
+            };
+            serde_json::json!({
+                "role": role,
+                "content": chat_content_value(content)?,
+            })
+        }
+        ResponseItem::AgentMessage { content, .. } => {
+            let Some(text) = codex_protocol::models::plaintext_agent_message_content(content) else {
+                return Ok(None);
+            };
+            serde_json::json!({
+                "role": "assistant",
+                "content": text,
+            })
+        }
+        ResponseItem::FunctionCall {
+            name,
+            namespace,
+            arguments,
+            call_id,
+            ..
+        }
+        | ResponseItem::CustomToolCall {
+            name,
+            namespace,
+            input: arguments,
+            call_id,
+            ..
+        } => {
+            let tool_name = if let Some(namespace) = namespace {
+                format!("{}{}", namespace, name)
+            } else {
+                name.clone()
+            };
+            serde_json::json!({
+                "role": "assistant",
+                "content": serde_json::Value::Null,
+                "tool_calls": [{
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_name,
+                        "arguments": arguments,
+                    }
+                }],
+            })
+        }
+        ResponseItem::ToolSearchCall {
+            call_id: Some(call_id),
+            arguments,
+            ..
+        } => serde_json::json!({
+            "role": "assistant",
+            "content": serde_json::Value::Null,
+            "tool_calls": [{
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": "tool_search",
+                    "arguments": serde_json::to_string(arguments)?,
+                }
+            }],
+        }),
+        ResponseItem::FunctionCallOutput { call_id, output, .. }
+        | ResponseItem::CustomToolCallOutput { call_id, output, .. } => serde_json::json!({
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": output.to_string(),
+        }),
+        ResponseItem::ToolSearchOutput { call_id, tools, .. } => serde_json::json!({
+            "role": "tool",
+            "tool_call_id": call_id,
+            "content": serde_json::to_string(tools)?,
+        }),
+        ResponseItem::AdditionalTools { .. }
+        | ResponseItem::Reasoning { .. }
+        | ResponseItem::LocalShellCall { .. }
+        | ResponseItem::ToolSearchCall { call_id: None, .. }
+        | ResponseItem::WebSearchCall { .. }
+        | ResponseItem::ImageGenerationCall { .. }
+        | ResponseItem::Compaction { .. }
+        | ResponseItem::CompactionTrigger { .. }
+        | ResponseItem::ContextCompaction { .. }
+        | ResponseItem::Other => {
+            return Ok(None);
+        }
+    };
+
+    Ok(Some(message))
+}
+
+fn chat_content_value(content: &[ContentItem]) -> Result<serde_json::Value> {
+    let mut parts = Vec::new();
+    for item in content {
+        match item {
+            ContentItem::InputText { text } => parts.push(serde_json::json!({
+                "type": "text",
+                "text": text,
+            })),
+            ContentItem::InputImage { image_url, detail } => {
+                let mut image_url_value = serde_json::json!({ "url": image_url });
+                if let Some(detail) = detail {
+                    image_url_value["detail"] = serde_json::Value::String(match detail {
+                        ImageDetail::Auto => "auto".to_string(),
+                        ImageDetail::Low => "low".to_string(),
+                        ImageDetail::High => "high".to_string(),
+                        ImageDetail::Original => "original".to_string(),
+                    });
+                }
+                parts.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": image_url_value,
+                }));
+            }
+            ContentItem::OutputText { text } => parts.push(serde_json::json!({
+                "type": "text",
+                "text": text,
+            })),
+        }
+    }
+
+    if parts.len() == 1 && matches!(parts[0].get("type").and_then(serde_json::Value::as_str), Some("text")) {
+        return Ok(parts
+            .into_iter()
+            .next()
+            .and_then(|part| part.get("text").cloned())
+            .unwrap_or(serde_json::Value::String(String::new())));
+    }
+
+    Ok(serde_json::Value::Array(parts))
+}
+
+impl ModelClient {
     /// Returns whether the Responses-over-WebSocket transport is active for this session.
     ///
     /// WebSocket use is controlled by provider capability and session-scoped fallback state.
@@ -1375,6 +1659,131 @@ impl ModelClientSession {
         }
     }
 
+    /// Streams a turn via the chat-completions API.
+    #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        name = "model_client.stream_chat_completions_api",
+        level = "info",
+        skip_all,
+        fields(
+            model = %model_info.slug,
+            wire_api = %self.client.state.provider.info().wire_api,
+            transport = "chat_completions_http",
+            http.method = "POST",
+            api.path = "chat/completions",
+            turn.has_metadata_header = responses_metadata.has_turn_metadata()
+        )
+    )]
+    async fn stream_chat_completions_api(
+        &self,
+        prompt: &Prompt,
+        model_info: &ModelInfo,
+        session_telemetry: &SessionTelemetry,
+        effort: Option<ReasoningEffortConfig>,
+        summary: ReasoningSummaryConfig,
+        service_tier: Option<String>,
+        responses_metadata: &CodexResponsesMetadata,
+        inference_trace: &InferenceTraceContext,
+    ) -> Result<ResponseStream> {
+        let auth_manager = self.client.state.provider.auth_manager();
+        let mut auth_recovery = auth_manager
+            .as_ref()
+            .map(AuthManager::unauthorized_recovery);
+        let mut pending_retry = PendingUnauthorizedRetry::default();
+        loop {
+            let client_setup = self.client.current_client_setup().await?;
+            let transport = self
+                .client
+                .build_api_transport(&client_setup.api_provider, "chat/completions")?;
+            let request_auth_context = AuthRequestTelemetryContext::new(
+                client_setup.auth.as_ref().map(CodexAuth::auth_mode),
+                client_setup.api_auth.as_ref(),
+                client_setup.agent_identity_telemetry.clone(),
+                pending_retry,
+            );
+            let (request_telemetry, sse_telemetry) = Self::build_streaming_telemetry(
+                session_telemetry,
+                request_auth_context,
+                RequestRouteTelemetry::for_endpoint("chat/completions"),
+                self.client.state.auth_env_telemetry.clone(),
+            );
+            let request = self.client.build_chat_completions_request(
+                prompt,
+                model_info,
+                effort.clone(),
+                summary,
+                service_tier.clone(),
+            )?;
+            let inference_trace_attempt = inference_trace.start_attempt();
+            inference_trace_attempt.record_started(&request);
+            let client = ApiChatCompletionsClient::new(
+                transport,
+                client_setup.api_provider,
+                client_setup.api_auth,
+            )
+            .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+            let stream_result = client
+                .stream_request(
+                    request,
+                    ApiChatCompletionsOptions {
+                        session_id: Some(responses_metadata.session_id.to_string()),
+                        thread_id: Some(responses_metadata.thread_id.to_string()),
+                        session_source: Some(self.client.state.session_source.clone()),
+                        extra_headers: self
+                            .client
+                            .build_responses_compatibility_headers(responses_metadata),
+                        compression: Compression::None,
+                        turn_state: None,
+                    },
+                )
+                .await;
+
+            match stream_result {
+                Ok(stream) => {
+                    let (stream, _) = map_response_stream(
+                        stream,
+                        session_telemetry.clone(),
+                        inference_trace_attempt,
+                        Arc::clone(&self.client.state.provider),
+                    );
+                    return Ok(stream);
+                }
+                Err(ApiError::Transport(
+                    unauthorized_transport @ TransportError::Http { status, .. },
+                )) if status == StatusCode::UNAUTHORIZED => {
+                    let response_debug_context =
+                        extract_response_debug_context(&unauthorized_transport);
+                    inference_trace_attempt.record_failed(
+                        &unauthorized_transport,
+                        response_debug_context.request_id.as_deref(),
+                        /*output_items*/ &[],
+                    );
+                    pending_retry = PendingUnauthorizedRetry::from_recovery(
+                        handle_unauthorized(
+                            unauthorized_transport,
+                            &mut auth_recovery,
+                            session_telemetry,
+                            &self.client.state.provider,
+                        )
+                        .await?,
+                    );
+                    continue;
+                }
+                Err(err) => {
+                    let response_debug_context =
+                        extract_response_debug_context_from_api_error(&err);
+                    let err = self.client.state.provider.map_api_error(err);
+                    inference_trace_attempt.record_failed(
+                        &err,
+                        response_debug_context.request_id.as_deref(),
+                        /*output_items*/ &[],
+                    );
+                    return Err(err);
+                }
+            }
+        }
+    }
+
     /// Streams a turn via the OpenAI Responses API.
     ///
     /// Handles reasoning summaries, verbosity, and the `text` controls used for output schemas.
@@ -1810,6 +2219,19 @@ impl ModelClientSession {
                 }
 
                 self.stream_responses_api(
+                    prompt,
+                    model_info,
+                    session_telemetry,
+                    effort,
+                    summary,
+                    service_tier,
+                    responses_metadata,
+                    inference_trace,
+                )
+                .await
+            }
+            WireApi::Chat => {
+                self.stream_chat_completions_api(
                     prompt,
                     model_info,
                     session_telemetry,

@@ -44,6 +44,12 @@ async fn invocation_for_payload(payload: ToolPayload) -> ToolInvocation {
     }
 }
 
+fn function_payload_from_patch(patch: &str) -> ToolPayload {
+    ToolPayload::Function {
+        arguments: serde_json::json!({ "patch": patch }).to_string(),
+    }
+}
+
 #[tokio::test]
 async fn pre_tool_use_payload_uses_freeform_patch_input() {
     let patch = sample_patch();
@@ -63,6 +69,22 @@ async fn pre_tool_use_payload_uses_freeform_patch_input() {
 }
 
 #[tokio::test]
+async fn pre_tool_use_payload_uses_function_patch_input() {
+    let patch = sample_patch();
+    let payload = function_payload_from_patch(patch);
+    let invocation = invocation_for_payload(payload).await;
+    let handler = ApplyPatchHandler::new(codex_protocol::openai_models::ApplyPatchToolType::Function, false);
+
+    assert_eq!(
+        handler.pre_tool_use_payload(&invocation),
+        Some(PreToolUsePayload {
+            tool_name: HookToolName::apply_patch(),
+            tool_input: json!({ "command": patch }),
+        })
+    );
+}
+
+#[tokio::test]
 async fn post_tool_use_payload_uses_patch_input_and_tool_output() {
     let patch = sample_patch();
     let payload = ToolPayload::Custom {
@@ -71,6 +93,25 @@ async fn post_tool_use_payload_uses_patch_input_and_tool_output() {
     let invocation = invocation_for_payload(payload).await;
     let output = ApplyPatchToolOutput::from_text("Success. Updated files.".to_string());
     let handler = ApplyPatchHandler::default();
+
+    assert_eq!(
+        handler.post_tool_use_payload(&invocation, &output),
+        Some(PostToolUsePayload {
+            tool_name: HookToolName::apply_patch(),
+            tool_use_id: "call-apply-patch".to_string(),
+            tool_input: json!({ "command": patch }),
+            tool_response: json!("Success. Updated files."),
+        })
+    );
+}
+
+#[tokio::test]
+async fn post_tool_use_payload_uses_function_patch_input_and_tool_output() {
+    let patch = sample_patch();
+    let payload = function_payload_from_patch(patch);
+    let invocation = invocation_for_payload(payload).await;
+    let output = ApplyPatchToolOutput::from_text("Success. Updated files.".to_string());
+    let handler = ApplyPatchHandler::new(codex_protocol::openai_models::ApplyPatchToolType::Function, false);
 
     assert_eq!(
         handler.post_tool_use_payload(&invocation, &output),

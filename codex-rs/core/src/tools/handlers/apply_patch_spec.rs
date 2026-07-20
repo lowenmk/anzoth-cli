@@ -1,5 +1,9 @@
+use std::collections::BTreeMap;
+
+use codex_tools::JsonSchema;
 use codex_tools::FreeformTool;
 use codex_tools::FreeformToolFormat;
+use codex_tools::ResponsesApiTool;
 use codex_tools::ToolSpec;
 
 const APPLY_PATCH_LARK_GRAMMAR: &str = include_str!("apply_patch.lark");
@@ -23,6 +27,33 @@ pub fn create_apply_patch_freeform_tool(include_environment_id: bool) -> ToolSpe
             syntax: "lark".to_string(),
             definition,
         },
+    })
+}
+
+pub fn create_apply_patch_function_tool(include_environment_id: bool) -> ToolSpec {
+    let mut description =
+        "Use the `apply_patch` tool to edit files. Pass the complete patch text in the `patch` field."
+            .to_string();
+    if include_environment_id {
+        description.push_str(
+            " When a turn has multiple environments, include an `*** Environment ID: ...` line in the patch text if needed.",
+        );
+    }
+
+    let properties = BTreeMap::from([(
+        "patch".to_string(),
+        JsonSchema::string(Some(
+            "The complete apply_patch patch text.".to_string(),
+        )),
+    )]);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "apply_patch".to_string(),
+        description,
+        strict: true,
+        defer_loading: None,
+        parameters: JsonSchema::object(properties, Some(vec!["patch".to_string()]), Some(false.into())),
+        output_schema: None,
     })
 }
 

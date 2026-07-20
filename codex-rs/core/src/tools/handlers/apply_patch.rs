@@ -23,6 +23,7 @@ use crate::tools::events::ToolEmitter;
 use crate::tools::events::ToolEventCtx;
 use crate::tools::handlers::apply_granted_turn_permissions;
 use crate::tools::handlers::apply_patch_spec::create_apply_patch_freeform_tool;
+use crate::tools::handlers::apply_patch_spec::create_apply_patch_function_tool;
 use crate::tools::handlers::resolve_tool_environment;
 use crate::tools::handlers::updated_hook_command;
 use crate::tools::hook_names::HookToolName;
@@ -46,6 +47,7 @@ use codex_protocol::models::FileSystemPermissions;
 use codex_protocol::protocol::EventMsg;
 use codex_protocol::protocol::FileChange;
 use codex_protocol::protocol::PatchApplyUpdatedEvent;
+use codex_protocol::openai_models::ApplyPatchToolType;
 use codex_sandboxing::policy_transforms::effective_file_system_sandbox_policy;
 use codex_sandboxing::policy_transforms::merge_permission_profiles;
 use codex_sandboxing::policy_transforms::normalize_additional_permissions;
@@ -53,18 +55,37 @@ use codex_tools::ToolName;
 use codex_tools::ToolSpec;
 use codex_utils_absolute_path::AbsolutePathBuf;
 use codex_utils_path_uri::PathUri;
+use serde::Deserialize;
 
 const APPLY_PATCH_ARGUMENT_DIFF_BUFFER_INTERVAL: Duration = Duration::from_millis(500);
-/// Handles freeform `apply_patch` requests and routes verified patches to the
-/// selected environment filesystem.
-#[derive(Default)]
+
+#[derive(Debug, Deserialize)]
+struct ApplyPatchFunctionArgs {
+    patch: String,
+}
+
+/// Handles `apply_patch` requests and routes verified patches to the selected
+/// environment filesystem.
 pub struct ApplyPatchHandler {
     multi_environment: bool,
+    tool_type: ApplyPatchToolType,
+}
+
+impl Default for ApplyPatchHandler {
+    fn default() -> Self {
+        Self {
+            multi_environment: false,
+            tool_type: ApplyPatchToolType::Freeform,
+        }
+    }
 }
 
 impl ApplyPatchHandler {
-    pub(crate) fn new(multi_environment: bool) -> Self {
-        Self { multi_environment }
+    pub(crate) fn new(tool_type: ApplyPatchToolType, multi_environment: bool) -> Self {
+        Self {
+            multi_environment,
+            tool_type,
+        }
     }
 }
 
@@ -250,12 +271,22 @@ fn write_permissions_for_paths(
     normalize_additional_permissions(permissions).ok()
 }
 
+fn apply_patch_payload_text(payload: &ToolPayload) -> Result<String, FunctionCallError> {
+    match payload {
+        ToolPayload::Custom { input } => Ok(input.clone()),
+        ToolPayload::Function { arguments } => {
+            let args: ApplyPatchFunctionArgs = crate::tools::handlers::parse_arguments(arguments)?;
+            Ok(args.patch)
+        }
+        _ => Err(FunctionCallError::RespondToModel(
+            "apply_patch handler received unsupported payload".to_string(),
+        )),
+    }
+}
+
 /// Extracts the raw patch text used as the command-shaped hook input for apply_patch.
 fn apply_patch_payload_command(payload: &ToolPayload) -> Option<String> {
-    match payload {
-        ToolPayload::Custom { input } => Some(input.clone()),
-        _ => None,
-    }
+    apply_patch_payload_text(payload).ok()
 }
 
 async fn effective_patch_permissions(
@@ -332,7 +363,14 @@ impl ToolExecutor<ToolInvocation> for ApplyPatchHandler {
     }
 
     fn spec(&self) -> ToolSpec {
-        create_apply_patch_freeform_tool(self.multi_environment)
+        match self.tool_type {
+            ApplyPatchToolType::Freeform => {
+                create_apply_patch_freeform_tool(self.multi_environment)
+            }
+            ApplyPatchToolType::Function => {
+                create_apply_patch_function_tool(self.multi_environment)
+            }
+        }
     }
 
     fn handle(&self, invocation: ToolInvocation) -> codex_tools::ToolExecutorFuture<'_> {
@@ -356,11 +394,7 @@ impl ApplyPatchHandler {
             ..
         } = invocation;
 
-        let ToolPayload::Custom { input: patch_input } = payload else {
-            return Err(FunctionCallError::RespondToModel(
-                "apply_patch handler received unsupported payload".to_string(),
-            ));
-        };
+        let patch_input = apply_patch_payload_text(&payload)?;
         let args = match codex_apply_patch::parse_patch(&patch_input) {
             Ok(args) => args,
             Err(parse_error) => {
@@ -493,11 +527,17 @@ impl ApplyPatchHandler {
 
 impl CoreToolRuntime for ApplyPatchHandler {
     fn matches_kind(&self, payload: &ToolPayload) -> bool {
-        matches!(payload, ToolPayload::Custom { .. })
+        match self.tool_type {
+            ApplyPatchToolType::Freeform => matches!(payload, ToolPayload::Custom { .. }),
+            ApplyPatchToolType::Function => matches!(payload, ToolPayload::Function { .. }),
+        }
     }
 
     fn create_diff_consumer(&self) -> Option<Box<dyn ToolArgumentDiffConsumer>> {
-        Some(Box::<ApplyPatchArgumentDiffConsumer>::default())
+        match self.tool_type {
+            ApplyPatchToolType::Freeform => Some(Box::<ApplyPatchArgumentDiffConsumer>::default()),
+            ApplyPatchToolType::Function => None,
+        }
     }
 
     fn pre_tool_use_payload(&self, invocation: &ToolInvocation) -> Option<PreToolUsePayload> {
@@ -513,11 +553,25 @@ impl CoreToolRuntime for ApplyPatchHandler {
         updated_input: serde_json::Value,
     ) -> Result<ToolInvocation, FunctionCallError> {
         let patch = updated_hook_command(&updated_input)?;
-        invocation.payload = match invocation.payload {
-            ToolPayload::Custom { .. } => ToolPayload::Custom {
+        invocation.payload = match (self.tool_type, invocation.payload) {
+            (ApplyPatchToolType::Freeform, ToolPayload::Custom { .. }) => ToolPayload::Custom {
                 input: patch.to_string(),
             },
-            payload => payload,
+            (ApplyPatchToolType::Function, ToolPayload::Function { arguments }) => {
+                ToolPayload::Function {
+                    arguments: crate::tools::handlers::rewrite_function_string_argument(
+                        &arguments,
+                        "apply_patch",
+                        "patch",
+                        patch,
+                    )?,
+                }
+            }
+            _ => {
+                return Err(FunctionCallError::RespondToModel(
+                    "hook input rewrite received unsupported apply_patch payload".to_string(),
+                ));
+            }
         };
         Ok(invocation)
     }

@@ -35,6 +35,7 @@ use crate::session::step_context::StepContext;
 use crate::session::tests::make_session_and_context;
 use crate::session::turn_context::TurnContext;
 use crate::tools::handlers::McpHandler;
+use crate::tools::handlers::apply_patch_spec::create_apply_patch_function_tool;
 use crate::tools::handlers::ToolSearchHandlerCache;
 use crate::tools::handlers::multi_agents_spec::MULTI_AGENT_V1_NAMESPACE;
 use crate::tools::registry::CoreToolRuntime;
@@ -664,6 +665,20 @@ async fn environment_count_controls_environment_backed_tools() {
 }
 
 #[tokio::test]
+async fn function_form_apply_patch_uses_function_tool_spec() {
+    let plan = probe(|turn| {
+        duplicate_primary_environment(turn);
+        turn.model_info.apply_patch_tool_type = Some(ApplyPatchToolType::Function);
+    })
+    .await;
+
+    assert_eq!(
+        plan.visible_spec("apply_patch"),
+        &create_apply_patch_function_tool(/*include_environment_id*/ true)
+    );
+}
+
+#[tokio::test]
 async fn environment_tools_follow_the_step_context() {
     let (_session, mut turn) = make_session_and_context().await;
     set_feature(&mut turn, Feature::UnifiedExec, /*enabled*/ true);
@@ -966,6 +981,29 @@ async fn request_plugin_install_requires_all_discovery_features() {
     )
     .await;
     enabled.assert_visible_contains(&[
+        "list_available_plugins_to_install",
+        "request_plugin_install",
+    ]);
+}
+
+#[tokio::test]
+async fn request_plugin_install_is_hidden_for_anzoth_models() {
+    let plan = probe_with(
+        |turn| {
+            set_features(
+                turn,
+                &[Feature::ToolSuggest, Feature::Apps, Feature::Plugins],
+            );
+            turn.model_info.slug = "Anzoth-Coder".to_string();
+        },
+        ToolPlanInputs {
+            tool_suggest_candidates: Some(plugin_candidates(ToolSuggestPresentation::ListTool)),
+            ..ToolPlanInputs::default()
+        },
+    )
+    .await;
+
+    plan.assert_visible_lacks(&[
         "list_available_plugins_to_install",
         "request_plugin_install",
     ]);

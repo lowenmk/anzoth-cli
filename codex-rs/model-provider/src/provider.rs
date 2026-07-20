@@ -262,6 +262,18 @@ impl ModelProvider for ConfiguredModelProvider {
         &self.info
     }
 
+    fn capabilities(&self) -> ProviderCapabilities {
+        if self.info.env_key.as_deref() == Some("ANZOTH_API_KEY") {
+            ProviderCapabilities {
+                namespace_tools: false,
+                web_search: false,
+                ..ProviderCapabilities::default()
+            }
+        } else {
+            ProviderCapabilities::default()
+        }
+    }
+
     fn auth_manager(&self) -> Option<Arc<AuthManager>> {
         self.auth_manager.clone()
     }
@@ -504,6 +516,23 @@ mod tests {
         );
 
         assert_eq!(provider.capabilities(), ProviderCapabilities::default());
+    }
+
+    #[test]
+    fn configured_anzoth_provider_disables_namespace_tools() {
+        let provider = create_model_provider(
+            ModelProviderInfo::create_anzoth_provider(/*base_url*/ None),
+            /*auth_manager*/ None,
+        );
+
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                namespace_tools: false,
+                web_search: false,
+                ..ProviderCapabilities::default()
+            }
+        );
     }
 
     #[test]

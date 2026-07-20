@@ -332,10 +332,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
 
-        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
+        // Title line rendered inside the box: ">_ Anzoth CLI (vX)"
         let title_spans: Vec<Span<'static>> = vec![
             Span::from(">_ ").dim(),
-            Span::from("OpenAI Codex").bold(),
+            Span::from("Anzoth CLI").bold(),
             Span::from(" ").dim(),
             Span::from(format!("(v{})", self.version)).dim(),
         ];
@@ -402,7 +402,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
     fn raw_lines(&self) -> Vec<Line<'static>> {
         let mut lines = vec![
-            Line::from(format!("OpenAI Codex (v{})", self.version)),
+            Line::from(format!("Anzoth CLI (v{})", self.version)),
             Line::from(format!(
                 "model: {}{}",
                 self.model,
@@ -419,5 +419,28 @@ impl HistoryCell for SessionHeaderHistoryCell {
             lines.push(Line::from("permissions: YOLO mode"));
         }
         lines
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SessionHeaderHistoryCell;
+    use crate::history_cell::HistoryCell;
+    use codex_protocol::openai_models::ReasoningEffort as ReasoningEffortConfig;
+    use std::path::PathBuf;
+
+    #[test]
+    fn header_raw_lines_use_anzoth_branding() {
+        let header = SessionHeaderHistoryCell::new(
+            "Anzoth-Coder".to_string(),
+            Some(ReasoningEffortConfig::High),
+            true,
+            PathBuf::from(r"C:\work\project"),
+            "1.2.3",
+        );
+
+        let raw_lines = header.raw_lines();
+        assert_eq!(raw_lines[0].to_string(), "Anzoth CLI (v1.2.3)");
+        assert!(raw_lines[1].to_string().contains("Anzoth-Coder"));
     }
 }

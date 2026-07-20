@@ -267,7 +267,7 @@ fn should_bootstrap_chatgpt_agent_identity(
 fn bearer_auth_for_provider(
     provider: &ModelProviderInfo,
 ) -> codex_protocol::error::Result<Option<BearerAuthProvider>> {
-    if let Some(api_key) = provider.api_key()? {
+    if let Some(api_key) = provider_env_api_key(provider) {
         return Ok(Some(BearerAuthProvider::new(api_key)));
     }
 
@@ -276,6 +276,13 @@ fn bearer_auth_for_provider(
     }
 
     Ok(None)
+}
+
+fn provider_env_api_key(provider: &ModelProviderInfo) -> Option<String> {
+    let env_key = provider.env_key.as_deref()?;
+    std::env::var(env_key)
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 /// Builds request-header auth for a first-party Codex auth snapshot.
@@ -328,8 +335,11 @@ mod tests {
     use serde_json::json;
     use std::path::Path;
     use std::path::PathBuf;
+    use std::sync::Mutex;
+    use std::sync::OnceLock;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
+    use std::env;
     use wiremock::Mock;
     use wiremock::MockServer;
     use wiremock::ResponseTemplate;
@@ -339,7 +349,50 @@ mod tests {
     use super::*;
 
     static NEXT_CODEX_HOME_ID: AtomicUsize = AtomicUsize::new(0);
+    static ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    const ANZOTH_API_KEY_ENV_VAR: &str = "ANZOTH_API_KEY";
     const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
+
+    fn env_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        ENV_TEST_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    struct EnvVarGuard {
+        key: &'static str,
+        original: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let original = env::var_os(key);
+            unsafe {
+                env::set_var(key, value);
+            }
+            Self { key, original }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let original = env::var_os(key);
+            unsafe {
+                env::remove_var(key);
+            }
+            Self { key, original }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.original {
+                    Some(value) => env::set_var(self.key, value),
+                    None => env::remove_var(self.key),
+                }
+            }
+        }
+    }
 
     async fn agent_identity_auth(chatgpt_account_is_fedramp: bool) -> AgentIdentityAuth {
         let key_material = generate_agent_key_material().expect("generate key material");
@@ -445,6 +498,38 @@ mod tests {
         let auth = resolve_provider_auth(/*auth*/ None, &provider).expect("auth should resolve");
 
         assert!(auth.to_auth_headers().is_empty());
+    }
+
+    #[test]
+    fn anzoth_provider_prefers_env_over_stored_auth() {
+        let _lock = env_test_lock();
+        let _env_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz_env_key");
+        let provider = ModelProviderInfo::create_anzoth_provider(None);
+        let auth = CodexAuth::from_api_key("anz_stored_key");
+
+        let resolved = resolve_provider_auth(Some(&auth), &provider)
+            .expect("provider auth should resolve");
+
+        assert_eq!(
+            resolved.to_auth_headers().get(AUTHORIZATION),
+            Some(&http::HeaderValue::from_static("Bearer anz_env_key"))
+        );
+    }
+
+    #[test]
+    fn anzoth_provider_uses_stored_auth_when_env_missing() {
+        let _lock = env_test_lock();
+        let _env_guard = EnvVarGuard::remove(ANZOTH_API_KEY_ENV_VAR);
+        let provider = ModelProviderInfo::create_anzoth_provider(None);
+        let auth = CodexAuth::from_api_key("anz_stored_key");
+
+        let resolved = resolve_provider_auth(Some(&auth), &provider)
+            .expect("provider auth should resolve");
+
+        assert_eq!(
+            resolved.to_auth_headers().get(AUTHORIZATION),
+            Some(&http::HeaderValue::from_static("Bearer anz_stored_key"))
+        );
     }
 
     #[test]

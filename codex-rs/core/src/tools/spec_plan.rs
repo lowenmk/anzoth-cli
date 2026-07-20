@@ -325,6 +325,7 @@ pub(crate) fn tool_suggest_enabled(turn_context: &TurnContext) -> bool {
     features.enabled(Feature::ToolSuggest)
         && features.enabled(Feature::Apps)
         && features.enabled(Feature::Plugins)
+        && !turn_context.model_info.slug.starts_with("Anzoth-")
 }
 
 fn namespace_tools_enabled(turn_context: &TurnContext) -> bool {
@@ -757,10 +758,14 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
         ));
     }
 
-    if environment_mode.has_environment() && turn_context.model_info.apply_patch_tool_type.is_some()
+    if environment_mode.has_environment()
+        && let Some(apply_patch_tool_type) = turn_context.model_info.apply_patch_tool_type
     {
         let include_environment_id = matches!(environment_mode, ToolEnvironmentMode::Multiple);
-        planned_tools.add(ApplyPatchHandler::new(include_environment_id));
+        planned_tools.add(ApplyPatchHandler::new(
+            apply_patch_tool_type,
+            include_environment_id,
+        ));
     }
 
     if turn_context

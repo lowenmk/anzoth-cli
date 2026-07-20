@@ -96,6 +96,7 @@ use codex_protocol::protocol::RealtimeVoice;
 use codex_protocol::protocol::SandboxPolicy;
 use codex_utils_path_uri::LegacyAppPathString;
 use serde::Deserialize;
+use serial_test::serial;
 use tempfile::tempdir;
 
 use super::*;
@@ -214,6 +215,44 @@ async fn load_config_normalizes_relative_cwd_override() -> std::io::Result<()> {
     .await?;
 
     assert_eq!(config.cwd, expected_cwd);
+    Ok(())
+}
+
+#[test]
+#[serial(codex_home)]
+fn find_codex_home_prefers_anzoth_home_env() -> std::io::Result<()> {
+    let temp = TempDir::new()?;
+    let anzoth_home = temp.path().join("anzoth-home");
+    let codex_home = temp.path().join(".codex-home");
+    std::fs::create_dir_all(&anzoth_home)?;
+    std::fs::create_dir_all(&codex_home)?;
+
+    let previous_anzoth_home = std::env::var_os("ANZOTH_HOME");
+    let previous_codex_home = std::env::var_os("CODEX_HOME");
+    unsafe {
+        std::env::set_var("ANZOTH_HOME", &anzoth_home);
+        std::env::set_var("CODEX_HOME", &codex_home);
+    }
+
+    let resolved = find_codex_home()?;
+    assert_eq!(resolved.as_path(), anzoth_home.as_path());
+
+    unsafe {
+        if let Some(previous_anzoth_home) = previous_anzoth_home {
+            std::env::set_var("ANZOTH_HOME", previous_anzoth_home);
+        } else {
+            std::env::remove_var("ANZOTH_HOME");
+        }
+    }
+
+    unsafe {
+        if let Some(previous_codex_home) = previous_codex_home {
+            std::env::set_var("CODEX_HOME", previous_codex_home);
+        } else {
+            std::env::remove_var("CODEX_HOME");
+        }
+    }
+
     Ok(())
 }
 
