@@ -3187,6 +3187,12 @@ impl Session {
         {
             developer_sections.push(model_switch_message);
         }
+        if turn_context.model_info.slug.starts_with("Anzoth-") {
+            developer_sections.push(format!(
+                "The public model alias for this session is {}. When asked which model you are, answer with that alias and do not search the web for that question. Do not say Anzoth is a company, organization, owner, or product history source. Do not claim Codex, OpenAI, or backend model identifiers. Do not invent company, ownership, architecture, or product-history facts. If asked what Anzoth is, say only that it is the CLI interface you are using, or say you do not have verified details; do not infer from repository structure or filenames. If the user asks what a domain such as anzoth.com is, use the web search tool and prefer authoritative Anzoth sources before answering.",
+                turn_context.model_info.display_name
+            ));
+        }
         if turn_context.config.include_permissions_instructions {
             developer_sections.push(
                 PermissionsInstructions::from_permission_profile(

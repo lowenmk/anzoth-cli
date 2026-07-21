@@ -746,6 +746,52 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
 }
 
 #[tokio::test]
+async fn anzoth_model_catalog_includes_factual_identity_guard() {
+    for model_info in anzoth_model_infos() {
+        assert!(
+            model_info.base_instructions.contains("Anzoth CLI"),
+            "{} should identify the interface as Anzoth CLI",
+            model_info.slug
+        );
+        assert!(
+            model_info
+                .base_instructions
+                .contains("Do not claim the interface is Codex or OpenAI."),
+            "{} should exclude Codex/OpenAI identity claims",
+            model_info.slug
+        );
+        assert!(
+            model_info
+                .base_instructions
+                .contains("Do not say you are based on OpenAI's models."),
+            "{} should exclude backend heritage claims",
+            model_info.slug
+        );
+        assert!(
+            model_info
+                .base_instructions
+                .contains("do not search the web for that question"),
+            "{} should avoid web search for model-identity questions",
+            model_info.slug
+        );
+        assert!(
+            model_info
+                .base_instructions
+                .contains("Do not say Anzoth is a company, organization, owner, or product history source."),
+            "{} should exclude fabricated organization claims",
+            model_info.slug
+        );
+        assert!(
+            model_info
+                .base_instructions
+                .contains("If the user asks what a domain such as anzoth.com is, use the web search tool and prefer authoritative Anzoth sources before answering."),
+            "{} should request web search for domain questions",
+            model_info.slug
+        );
+    }
+}
+
+#[tokio::test]
 async fn summarize_memories_returns_empty_for_empty_input() {
     let client = test_model_client(SessionSource::Cli);
     let model_info = test_model_info();

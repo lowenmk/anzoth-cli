@@ -9043,6 +9043,34 @@ async fn build_initial_context_prepends_model_switch_message() {
 }
 
 #[tokio::test]
+async fn build_initial_context_adds_anzoth_identity_guard() {
+    let (session, turn_context) = make_session_and_context().await;
+    let turn_context = Arc::new(
+        turn_context
+            .with_model("Anzoth-Coder".to_string(), &session.services.models_manager)
+            .await,
+    );
+
+    let initial_context = build_initial_context(&session, &turn_context).await;
+
+    assert!(initial_context.iter().any(|item| {
+        let ResponseItem::Message { role, content, .. } = item else {
+            return false;
+        };
+        role == "developer"
+            && content.iter().any(|part| {
+                let ContentItem::InputText { text } = part else {
+                    return false;
+                };
+                text.contains("public model alias for this session")
+                    && text.contains("do not search the web for that question")
+                    && text.contains("Do not say Anzoth is a company, organization, owner, or product history source.")
+                    && text.contains("If the user asks what a domain such as anzoth.com is, use the web search tool and prefer authoritative Anzoth sources before answering.")
+            })
+    }));
+}
+
+#[tokio::test]
 async fn record_context_updates_and_set_reference_context_item_persists_full_reinjection_to_rollout()
  {
     let (mut session, previous_context) = make_session_and_context().await;
