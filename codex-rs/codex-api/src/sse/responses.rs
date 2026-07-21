@@ -16,6 +16,7 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -311,6 +312,20 @@ fn json_value_as_string(value: &Value) -> Option<String> {
     }
 }
 
+fn response_completed_output_items(event: &ResponsesStreamEvent) -> Vec<ResponseItem> {
+    let Some(response) = event.response.as_ref() else {
+        return Vec::new();
+    };
+    let Some(output) = response.get("output").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    output
+        .iter()
+        .filter_map(|item| serde_json::from_value::<ResponseItem>(item.clone()).ok())
+        .collect()
+}
+
 #[derive(Debug)]
 pub enum ResponsesEventError {
     Api(ApiError),
@@ -499,6 +514,7 @@ async fn process_sse_with_treatment(
     let mut stream = stream.eventsource();
     let mut response_error: Option<ApiError> = None;
     let mut last_server_model: Option<String> = None;
+    let mut emitted_output_item_ids: HashSet<String> = HashSet::new();
 
     loop {
         let start = Instant::now();
@@ -578,8 +594,36 @@ async fn process_sse_with_treatment(
             return;
         }
 
+        let completed_output_items = if event.kind == "response.completed" {
+            response_completed_output_items(&event)
+        } else {
+            Vec::new()
+        };
+
         match process_responses_event(event) {
             Ok(Some(event)) => {
+                if let ResponseEvent::OutputItemDone(item) = &event
+                    && let Some(item_id) = item.id()
+                {
+                    emitted_output_item_ids.insert(item_id.to_string());
+                }
+                if let ResponseEvent::Completed { .. } = &event {
+                    for item in completed_output_items {
+                        let item_id = item.id().map(ToString::to_string);
+                        if item_id
+                            .as_ref()
+                            .is_some_and(|id| emitted_output_item_ids.contains(id))
+                        {
+                            continue;
+                        }
+                        if let Some(item_id) = item_id {
+                            emitted_output_item_ids.insert(item_id);
+                        }
+                        if tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await.is_err() {
+                            return;
+                        }
+                    }
+                }
                 let is_completed = matches!(event, ResponseEvent::Completed { .. });
                 if tx_event.send(Ok(event)).await.is_err() {
                     return;
@@ -804,6 +848,40 @@ mod tests {
             }
             other => panic!("unexpected third event: {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn completed_only_response_emits_missing_output_item_done() {
+        let completed = json!({
+            "type": "response.completed",
+            "response": {
+                "id": "resp1",
+                "status": "completed",
+                "output": [
+                    {
+                        "id": "msg1",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "BASIC_OK",
+                                "annotations": [],
+                            }
+                        ]
+                    }
+                ]
+            }
+        })
+        .to_string();
+
+        let sse = format!("event: response.completed\ndata: {completed}\n\n");
+        let events = collect_events(&[sse.as_bytes()]).await;
+
+        assert_eq!(events.len(), 2);
+        assert_matches!(&events[0], Ok(ResponseEvent::OutputItemDone(ResponseItem::Message { role, .. })) if role == "assistant");
+        assert_matches!(&events[1], Ok(ResponseEvent::Completed { response_id, .. }) if response_id == "resp1");
     }
 
     #[test]
