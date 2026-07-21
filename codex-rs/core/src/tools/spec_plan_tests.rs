@@ -275,6 +275,15 @@ fn use_bedrock_provider(turn: &mut TurnContext) {
     turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
 }
 
+fn use_anzoth_provider(turn: &mut TurnContext) {
+    let provider_info = ModelProviderInfo::create_anzoth_provider(/*base_url*/ None);
+    update_config(turn, |config| {
+        config.model_provider_id = "anzoth".to_string();
+        config.model_provider = provider_info.clone();
+    });
+    turn.provider = create_model_provider(provider_info, turn.auth_manager.clone());
+}
+
 struct TestNamespaceExtensionTool {
     namespace: &'static str,
     tool_name: &'static str,
@@ -1690,4 +1699,30 @@ async fn hosted_web_search_and_standalone_image_generation_follow_runtime_gates(
     })
     .await;
     unsupported_provider.assert_visible_lacks(&["web_search"]);
+}
+
+#[tokio::test]
+async fn anzoth_provider_exposes_hosted_web_search() {
+    let plan = probe_with(
+        |turn| {
+            set_web_search_mode(turn, WebSearchMode::Live);
+            use_anzoth_provider(turn);
+            turn.model_info.web_search_tool_type = WebSearchToolType::TextAndImage;
+        },
+        ToolPlanInputs::default(),
+    )
+    .await;
+
+    plan.assert_visible_contains(&["web_search"]);
+    assert_eq!(
+        plan.visible_spec("web_search"),
+        &ToolSpec::WebSearch {
+            external_web_access: Some(true),
+            indexed_web_access: None,
+            filters: None,
+            user_location: None,
+            search_context_size: None,
+            search_content_types: Some(vec!["text".to_string(), "image".to_string()]),
+        }
+    );
 }
