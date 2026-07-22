@@ -619,7 +619,11 @@ async fn process_sse_with_treatment(
                         if let Some(item_id) = item_id {
                             emitted_output_item_ids.insert(item_id);
                         }
-                        if tx_event.send(Ok(ResponseEvent::OutputItemDone(item))).await.is_err() {
+                        if tx_event
+                            .send(Ok(ResponseEvent::OutputItemDone(item)))
+                            .await
+                            .is_err()
+                        {
                             return;
                         }
                     }

@@ -108,11 +108,7 @@ impl RecordingTransport {
     }
 
     fn push_request(&self, request: Request) {
-        self.state
-            .requests
-            .lock()
-            .expect("mutex")
-            .push(request);
+        self.state.requests.lock().expect("mutex").push(request);
     }
 }
 
@@ -131,17 +127,20 @@ impl HttpTransport for RecordingTransport {
                 body: Some(self.status.to_string()),
             });
         }
+        let bytes = self.stream.as_ref().clone();
         Ok(StreamResponse {
             status: self.status,
             headers: self.headers.clone(),
             bytes: Box::pin(futures::stream::iter(
-                self.stream.iter().cloned().map(Ok::<Bytes, TransportError>),
+                bytes.into_iter().map(Ok::<Bytes, TransportError>),
             )),
         })
     }
 }
 
-fn client_with_transport(transport: RecordingTransport) -> ChatCompletionsClient<RecordingTransport> {
+fn client_with_transport(
+    transport: RecordingTransport,
+) -> ChatCompletionsClient<RecordingTransport> {
     ChatCompletionsClient::new(transport, provider(), Arc::new(NoAuth))
 }
 
@@ -274,12 +273,14 @@ data: [DONE]
     let mut saw_completion = false;
     while let Some(event) = stream.next().await {
         match event? {
-            codex_api::ResponseEvent::OutputItemDone(codex_protocol::models::ResponseItem::FunctionCall {
-                call_id,
-                name,
-                arguments,
-                ..
-            }) => {
+            codex_api::ResponseEvent::OutputItemDone(
+                codex_protocol::models::ResponseItem::FunctionCall {
+                    call_id,
+                    name,
+                    arguments,
+                    ..
+                },
+            ) => {
                 assert_eq!(call_id, "call-1");
                 assert_eq!(name, "shell_command");
                 assert_eq!(arguments, "{\"command\":\"echo hi\"}");
@@ -300,11 +301,11 @@ data: [DONE]
 
 #[tokio::test]
 async fn chat_stream_reports_backend_error() -> Result<()> {
-    let transport = RecordingTransport::new(vec![Ok(Bytes::from(
+    let transport = RecordingTransport::new(vec![Bytes::from(
         r#"data: {"error":{"message":"bad backend"}}
 
 "#,
-    ))]);
+    )]);
     let client = client_with_transport(transport);
 
     let mut stream = client
@@ -336,7 +337,7 @@ async fn chat_client_surfaces_http_status_errors() -> Result<()> {
     ] {
         let transport = RecordingTransport::with_status(status);
         let client = client_with_transport(transport);
-        let err = client
+        let err = match client
             .stream(
                 json!({"model":"demo","messages":[],"stream":true}),
                 HeaderMap::new(),
@@ -344,7 +345,10 @@ async fn chat_client_surfaces_http_status_errors() -> Result<()> {
                 None,
             )
             .await
-            .expect_err("expected transport failure");
+        {
+            Ok(_) => panic!("expected transport failure"),
+            Err(err) => err,
+        };
         assert!(matches!(
             err,
             ApiError::Transport(TransportError::Http { status: actual, .. }) if actual == status

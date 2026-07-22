@@ -73,7 +73,10 @@ async fn pre_tool_use_payload_uses_function_patch_input() {
     let patch = sample_patch();
     let payload = function_payload_from_patch(patch);
     let invocation = invocation_for_payload(payload).await;
-    let handler = ApplyPatchHandler::new(codex_protocol::openai_models::ApplyPatchToolType::Function, false);
+    let handler = ApplyPatchHandler::new(
+        codex_protocol::openai_models::ApplyPatchToolType::Function,
+        false,
+    );
 
     assert_eq!(
         handler.pre_tool_use_payload(&invocation),
@@ -111,7 +114,10 @@ async fn post_tool_use_payload_uses_function_patch_input_and_tool_output() {
     let payload = function_payload_from_patch(patch);
     let invocation = invocation_for_payload(payload).await;
     let output = ApplyPatchToolOutput::from_text("Success. Updated files.".to_string());
-    let handler = ApplyPatchHandler::new(codex_protocol::openai_models::ApplyPatchToolType::Function, false);
+    let handler = ApplyPatchHandler::new(
+        codex_protocol::openai_models::ApplyPatchToolType::Function,
+        false,
+    );
 
     assert_eq!(
         handler.post_tool_use_payload(&invocation, &output),

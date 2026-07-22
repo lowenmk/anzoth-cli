@@ -333,13 +333,13 @@ mod tests {
     use http::header::AUTHORIZATION;
     use pretty_assertions::assert_eq;
     use serde_json::json;
+    use std::env;
     use std::path::Path;
     use std::path::PathBuf;
     use std::sync::Mutex;
     use std::sync::OnceLock;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::env;
     use wiremock::Mock;
     use wiremock::MockServer;
     use wiremock::ResponseTemplate;
@@ -507,8 +507,8 @@ mod tests {
         let provider = ModelProviderInfo::create_anzoth_provider(None);
         let auth = CodexAuth::from_api_key("anz_stored_key");
 
-        let resolved = resolve_provider_auth(Some(&auth), &provider)
-            .expect("provider auth should resolve");
+        let resolved =
+            resolve_provider_auth(Some(&auth), &provider).expect("provider auth should resolve");
 
         assert_eq!(
             resolved.to_auth_headers().get(AUTHORIZATION),
@@ -523,8 +523,8 @@ mod tests {
         let provider = ModelProviderInfo::create_anzoth_provider(None);
         let auth = CodexAuth::from_api_key("anz_stored_key");
 
-        let resolved = resolve_provider_auth(Some(&auth), &provider)
-            .expect("provider auth should resolve");
+        let resolved =
+            resolve_provider_auth(Some(&auth), &provider).expect("provider auth should resolve");
 
         assert_eq!(
             resolved.to_auth_headers().get(AUTHORIZATION),

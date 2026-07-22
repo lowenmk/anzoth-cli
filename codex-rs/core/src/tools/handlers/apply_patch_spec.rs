@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use codex_tools::JsonSchema;
 use codex_tools::FreeformTool;
 use codex_tools::FreeformToolFormat;
+use codex_tools::JsonSchema;
 use codex_tools::ResponsesApiTool;
 use codex_tools::ToolSpec;
 
@@ -42,9 +42,7 @@ pub fn create_apply_patch_function_tool(include_environment_id: bool) -> ToolSpe
 
     let properties = BTreeMap::from([(
         "patch".to_string(),
-        JsonSchema::string(Some(
-            "The complete apply_patch patch text.".to_string(),
-        )),
+        JsonSchema::string(Some("The complete apply_patch patch text.".to_string())),
     )]);
 
     ToolSpec::Function(ResponsesApiTool {
@@ -52,7 +50,11 @@ pub fn create_apply_patch_function_tool(include_environment_id: bool) -> ToolSpe
         description,
         strict: true,
         defer_loading: None,
-        parameters: JsonSchema::object(properties, Some(vec!["patch".to_string()]), Some(false.into())),
+        parameters: JsonSchema::object(
+            properties,
+            Some(vec!["patch".to_string()]),
+            Some(false.into()),
+        ),
         output_schema: None,
     })
 }

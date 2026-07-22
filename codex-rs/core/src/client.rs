@@ -952,7 +952,9 @@ impl ModelClient {
         }
 
         // Keep the request deterministic for tests and request tracing.
-        if let Some(messages) = request.get_mut("messages").and_then(serde_json::Value::as_array_mut)
+        if let Some(messages) = request
+            .get_mut("messages")
+            .and_then(serde_json::Value::as_array_mut)
         {
             messages.shrink_to_fit();
         }
@@ -1081,7 +1083,8 @@ fn chat_message_from_response_item(item: &ResponseItem) -> Result<Option<serde_j
             })
         }
         ResponseItem::AgentMessage { content, .. } => {
-            let Some(text) = codex_protocol::models::plaintext_agent_message_content(content) else {
+            let Some(text) = codex_protocol::models::plaintext_agent_message_content(content)
+            else {
                 return Ok(None);
             };
             serde_json::json!({
@@ -1137,8 +1140,12 @@ fn chat_message_from_response_item(item: &ResponseItem) -> Result<Option<serde_j
                 }
             }],
         }),
-        ResponseItem::FunctionCallOutput { call_id, output, .. }
-        | ResponseItem::CustomToolCallOutput { call_id, output, .. } => serde_json::json!({
+        ResponseItem::FunctionCallOutput {
+            call_id, output, ..
+        }
+        | ResponseItem::CustomToolCallOutput {
+            call_id, output, ..
+        } => serde_json::json!({
             "role": "tool",
             "tool_call_id": call_id,
             "content": output.to_string(),
@@ -1195,7 +1202,12 @@ fn chat_content_value(content: &[ContentItem]) -> Result<serde_json::Value> {
         }
     }
 
-    if parts.len() == 1 && matches!(parts[0].get("type").and_then(serde_json::Value::as_str), Some("text")) {
+    if parts.len() == 1
+        && matches!(
+            parts[0].get("type").and_then(serde_json::Value::as_str),
+            Some("text")
+        )
+    {
         return Ok(parts
             .into_iter()
             .next()

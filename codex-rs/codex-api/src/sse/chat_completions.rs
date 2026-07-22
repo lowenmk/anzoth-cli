@@ -219,7 +219,9 @@ async fn process_choice_delta(
                     .await;
             }
             state.assistant_text.push_str(&text);
-            let _ = tx_event.send(Ok(ResponseEvent::OutputTextDelta(text))).await;
+            let _ = tx_event
+                .send(Ok(ResponseEvent::OutputTextDelta(text)))
+                .await;
         }
     }
 
@@ -249,9 +251,9 @@ async fn process_choice_delta(
                     if !call_state.announced {
                         call_state.announced = true;
                         let _ = tx_event
-                            .send(Ok(ResponseEvent::OutputItemAdded(
-                                build_tool_call_item(call_state),
-                            )))
+                            .send(Ok(ResponseEvent::OutputItemAdded(build_tool_call_item(
+                                call_state,
+                            ))))
                             .await;
                     }
                     call_state.arguments.push_str(arguments);
@@ -277,7 +279,9 @@ fn ensure_tool_call_state(state: &mut ChatStreamState, index: i64) -> &mut ToolC
 
     let index = index as usize;
     if state.tool_calls.len() <= index {
-        state.tool_calls.resize_with(index + 1, ToolCallState::default);
+        state
+            .tool_calls
+            .resize_with(index + 1, ToolCallState::default);
     }
     &mut state.tool_calls[index]
 }

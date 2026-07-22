@@ -44,22 +44,30 @@ mod tests {
             response.models.first().map(|model| model.slug.as_str()),
             Some("Anzoth-Coder")
         );
-        assert!(response
-            .models
-            .iter()
-            .all(|model| !model.use_responses_lite));
-        assert!(response
-            .models
-            .iter()
-            .all(|model| model.tool_mode.is_none()));
-        assert!(response
-            .models
-            .iter()
-            .all(|model| model.multi_agent_version.is_none()));
-        assert!(response
-            .models
-            .iter()
-            .all(|model| !model.supports_search_tool));
+        assert!(
+            response
+                .models
+                .iter()
+                .all(|model| !model.use_responses_lite)
+        );
+        assert!(
+            response
+                .models
+                .iter()
+                .all(|model| model.tool_mode.is_none())
+        );
+        assert!(
+            response
+                .models
+                .iter()
+                .all(|model| model.multi_agent_version.is_none())
+        );
+        assert!(
+            response
+                .models
+                .iter()
+                .all(|model| !model.supports_search_tool)
+        );
         assert!(response.models.iter().all(|model| {
             matches!(
                 model.apply_patch_tool_type,

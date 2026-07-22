@@ -15,6 +15,8 @@ use crate::GenerateAttestationFuture;
 use crate::responses_metadata::CodexResponsesMetadata;
 use crate::test_support::TestCodexResponsesRequestKind;
 use crate::test_support::responses_metadata as test_responses_metadata;
+use crate::tools::handlers::apply_patch_spec::create_apply_patch_function_tool;
+use crate::tools::handlers::shell_spec::{CommandToolOptions, create_shell_command_tool};
 use codex_api::AgentIdentityTelemetry;
 use codex_api::ApiError;
 use codex_api::ResponseEvent;
@@ -34,11 +36,11 @@ use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::WireApi;
 use codex_model_provider_info::create_oss_provider_with_base_url;
 use codex_otel::SessionTelemetry;
+use codex_protocol::ResponseItemId;
 use codex_protocol::ThreadId;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::models::BaseInstructions;
 use codex_protocol::models::ContentItem;
-use codex_protocol::ResponseItemId;
 use codex_protocol::models::ResponseItem;
 use codex_protocol::openai_models::ModelInfo;
 use codex_protocol::openai_models::ModelsResponse;
@@ -54,6 +56,9 @@ use codex_rollout_trace::RawTraceEventPayload;
 use codex_rollout_trace::RolloutTrace;
 use codex_rollout_trace::TraceWriter;
 use codex_rollout_trace::replay_bundle;
+use codex_tools::JsonSchema;
+use codex_tools::ToolSpec;
+use codex_tools::create_tools_json_for_responses_api;
 use futures::StreamExt;
 use pretty_assertions::assert_eq;
 use serde_json::json;
@@ -82,11 +87,6 @@ use wiremock::MockServer;
 use wiremock::ResponseTemplate;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
-use codex_tools::JsonSchema;
-use codex_tools::create_tools_json_for_responses_api;
-use crate::tools::handlers::apply_patch_spec::create_apply_patch_function_tool;
-use crate::tools::handlers::shell_spec::{CommandToolOptions, create_shell_command_tool};
-use codex_tools::ToolSpec;
 
 const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
 const TEST_INSTALLATION_ID: &str = "11111111-1111-4111-8111-111111111111";
@@ -283,9 +283,8 @@ fn test_model_info() -> ModelInfo {
 }
 
 fn anzoth_model_infos() -> Vec<ModelInfo> {
-    let response: ModelsResponse =
-        serde_json::from_str(include_str!("../../models-anzoth.json"))
-            .expect("deserialize Anzoth model catalog");
+    let response: ModelsResponse = serde_json::from_str(include_str!("../../models-anzoth.json"))
+        .expect("deserialize Anzoth model catalog");
     response.models
 }
 
@@ -620,17 +619,26 @@ fn build_chat_completions_request_uses_system_messages_and_tools() {
     assert_eq!(request["tool_choice"], json!("auto"));
     assert_eq!(request["parallel_tool_calls"], json!(true));
     assert_eq!(request["messages"][0]["role"], json!("system"));
-    assert_eq!(request["messages"][0]["content"], json!("You are Anzoth CLI"));
+    assert_eq!(
+        request["messages"][0]["content"],
+        json!("You are Anzoth CLI")
+    );
     assert_eq!(request["messages"][1]["role"], json!("user"));
     assert_eq!(request["messages"][1]["content"], json!("hello"));
     assert_eq!(request["messages"][2]["role"], json!("assistant"));
-    assert_eq!(request["messages"][2]["tool_calls"][0]["id"], json!("call-1"));
+    assert_eq!(
+        request["messages"][2]["tool_calls"][0]["id"],
+        json!("call-1")
+    );
     assert_eq!(
         request["messages"][2]["tool_calls"][0]["function"]["name"],
         json!("shell_command")
     );
     assert_eq!(request["tools"][0]["type"], json!("function"));
-    assert_eq!(request["tools"][0]["function"]["name"], json!("shell_command"));
+    assert_eq!(
+        request["tools"][0]["function"]["name"],
+        json!("shell_command")
+    );
 }
 
 #[tokio::test]
@@ -664,8 +672,8 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
         output_schema: None,
         output_schema_strict: true,
     };
-    let expected_tools = create_tools_json_for_responses_api(&prompt.tools)
-        .expect("Anzoth tools should serialize");
+    let expected_tools =
+        create_tools_json_for_responses_api(&prompt.tools).expect("Anzoth tools should serialize");
 
     for model_info in anzoth_model_infos() {
         assert!(
@@ -697,23 +705,33 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
         assert_eq!(request_json["tool_choice"], json!("auto"));
         assert_eq!(request_json["parallel_tool_calls"], json!(true));
         assert!(request_json.get("messages").is_none());
-        assert_eq!(request_json["tools"].as_array().expect("tools array").len(), 2);
+        assert_eq!(
+            request_json["tools"].as_array().expect("tools array").len(),
+            2
+        );
         assert_eq!(request_json["tools"][0]["type"], json!("function"));
         assert_eq!(request_json["tools"][0]["name"], json!("shell_command"));
         assert_eq!(request_json["tools"][1]["type"], json!("function"));
         assert_eq!(request_json["tools"][1]["name"], json!("apply_patch"));
-        assert_eq!(request_json["tools"][1]["parameters"]["properties"]["patch"]["type"], json!("string"));
-        assert!(request_json["tools"]
-            .as_array()
-            .expect("tools array")
-            .iter()
-            .all(|tool| tool["type"] == json!("function")));
+        assert_eq!(
+            request_json["tools"][1]["parameters"]["properties"]["patch"]["type"],
+            json!("string")
+        );
+        assert!(
+            request_json["tools"]
+                .as_array()
+                .expect("tools array")
+                .iter()
+                .all(|tool| tool["type"] == json!("function"))
+        );
         assert_eq!(request_json["tools"], json!(expected_tools));
-        assert!(request_json["input"]
-            .as_array()
-            .expect("input array")
-            .iter()
-            .all(|item| item["type"] != json!("additional_tools")));
+        assert!(
+            request_json["input"]
+                .as_array()
+                .expect("input array")
+                .iter()
+                .all(|item| item["type"] != json!("additional_tools"))
+        );
     }
 
     let model_info = test_model_info();
@@ -738,11 +756,13 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
     let request_json = serde_json::to_value(&request).expect("request json");
     assert_eq!(request_json["tools"], json!(expected_tools));
     assert!(request_json.get("messages").is_none());
-    assert!(request_json["input"]
-        .as_array()
-        .expect("input array")
-        .iter()
-        .all(|item| item["type"] != json!("additional_tools")));
+    assert!(
+        request_json["input"]
+            .as_array()
+            .expect("input array")
+            .iter()
+            .all(|item| item["type"] != json!("additional_tools"))
+    );
 }
 
 #[tokio::test]
@@ -775,9 +795,9 @@ async fn anzoth_model_catalog_includes_factual_identity_guard() {
             model_info.slug
         );
         assert!(
-            model_info
-                .base_instructions
-                .contains("Do not say Anzoth is a company, organization, owner, or product history source."),
+            model_info.base_instructions.contains(
+                "Do not say Anzoth is a company, organization, owner, or product history source."
+            ),
             "{} should exclude fabricated organization claims",
             model_info.slug
         );
