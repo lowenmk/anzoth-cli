@@ -319,7 +319,8 @@ impl AuthModeWidget {
     }
 
     fn is_api_login_allowed(&self) -> bool {
-        self.is_anzoth_api_key_only_flow() || !matches!(self.forced_login_method, Some(ForcedLoginMethod::Chatgpt))
+        self.is_anzoth_api_key_only_flow()
+            || !matches!(self.forced_login_method, Some(ForcedLoginMethod::Chatgpt))
     }
 
     fn is_chatgpt_login_allowed(&self) -> bool {
@@ -708,13 +709,11 @@ impl AuthModeWidget {
             )
             .render(input_area, buf);
 
-        let mut footer_lines: Vec<Line> = vec![
-            Line::from(vec![
-                "  Press ".dim(),
-                self.confirm_binding().into(),
-                " to save".dim(),
-            ]),
-        ];
+        let mut footer_lines: Vec<Line> = vec![Line::from(vec![
+            "  Press ".dim(),
+            self.confirm_binding().into(),
+            " to save".dim(),
+        ])];
         if !self.is_anzoth_api_key_only_flow() {
             footer_lines.push(Line::from(vec![
                 "  Press ".dim(),

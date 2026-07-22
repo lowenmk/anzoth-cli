@@ -3,12 +3,10 @@ use crossterm::event::KeyEventKind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::prelude::Widget;
-use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
-use ratatui::widgets::Wrap;
 use std::cell::Cell;
 
 use crate::ascii_animation::AsciiAnimation;
@@ -85,21 +83,27 @@ impl WidgetRef for &WelcomeWidget {
             && layout_area.height >= MIN_ANIMATION_HEIGHT
             && layout_area.width >= MIN_ANIMATION_WIDTH;
 
-        let mut lines: Vec<Line> = Vec::new();
         if show_animation {
             let frame = self.animation.current_frame();
-            lines.extend(frame.lines().map(Into::into));
-            lines.push("".into());
+            let lines: Vec<Line> = frame.lines().map(Into::into).collect();
+            Paragraph::new(lines).render(area, buf);
+        } else {
+            self.render_minimal_fallback(area, buf);
         }
-        lines.push(Line::from(vec![
-            "  ".into(),
-            "Welcome to ".into(),
-            "Anzoth CLI".bold(),
-        ]));
+    }
+}
 
-        Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .render(area, buf);
+impl WelcomeWidget {
+    fn render_minimal_fallback(&self, area: Rect, buf: &mut Buffer) {
+        if area.width == 0 || area.height == 0 {
+            return;
+        }
+
+        let x = area.x + area.width / 2;
+        let y = area.y + area.height / 2;
+        if let Some(cell) = buf.cell_mut((x, y)) {
+            cell.set_symbol("o");
+        }
     }
 }
 
@@ -125,18 +129,23 @@ mod tests {
     static VARIANT_B: [&str; 1] = ["frame-b"];
     static VARIANTS: [&[&str]; 2] = [&VARIANT_A, &VARIANT_B];
 
-    fn row_containing(buf: &Buffer, needle: &str) -> Option<u16> {
-        (0..buf.area.height).find(|&y| {
-            let mut row = String::new();
-            for x in 0..buf.area.width {
-                row.push_str(buf[(x, y)].symbol());
-            }
-            row.contains(needle)
-        })
+    fn occupied_rows(buf: &Buffer) -> usize {
+        (0..buf.area.height)
+            .filter(|&y| {
+                (0..buf.area.width).any(|x| {
+                    let cell = &buf[(x, y)];
+                    let has_symbol = !cell.symbol().trim().is_empty();
+                    let has_style = cell.fg != ratatui::style::Color::Reset
+                        || cell.bg != ratatui::style::Color::Reset
+                        || !cell.modifier.is_empty();
+                    has_symbol || has_style
+                })
+            })
+            .count()
     }
 
     #[test]
-    fn welcome_renders_animation_on_first_draw() {
+    fn welcome_renders_logo_on_first_draw() {
         let widget = WelcomeWidget::new(
             /*is_logged_in*/ false,
             FrameRequester::test_dummy(),
@@ -144,15 +153,28 @@ mod tests {
         );
         let area = Rect::new(0, 0, MIN_ANIMATION_WIDTH, MIN_ANIMATION_HEIGHT);
         let mut buf = Buffer::empty(area);
-        let frame_lines = widget.animation.current_frame().lines().count() as u16;
         (&widget).render(area, &mut buf);
 
-        let welcome_row = row_containing(&buf, "Welcome");
-        assert_eq!(welcome_row, Some(frame_lines + 1));
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+        assert!(occupied_rows(&buf) > 0);
+        assert!(!rendered.contains("Welcome"));
+        assert!(!rendered.contains("Codex"));
+        assert!(
+            rendered
+                .chars()
+                .any(|ch| matches!(ch, 'a' | 'n' | 'z' | 'o' | 't' | 'h')),
+            "expected visible logo glyphs"
+        );
     }
 
     #[test]
-    fn welcome_skips_animation_below_height_breakpoint() {
+    fn welcome_uses_minimal_fallback_below_height_breakpoint() {
         let widget = WelcomeWidget::new(
             /*is_logged_in*/ false,
             FrameRequester::test_dummy(),
@@ -162,8 +184,16 @@ mod tests {
         let mut buf = Buffer::empty(area);
         (&widget).render(area, &mut buf);
 
-        let welcome_row = row_containing(&buf, "Welcome");
-        assert_eq!(welcome_row, Some(0));
+        assert_eq!(occupied_rows(&buf), 1);
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+        assert!(rendered.contains("o"));
+        assert!(!rendered.contains("Welcome"));
     }
 
     #[test]

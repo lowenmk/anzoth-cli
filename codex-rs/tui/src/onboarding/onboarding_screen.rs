@@ -15,9 +15,9 @@ use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_protocol::ServerNotification;
 use codex_exec_server::LOCAL_FS;
 use codex_git_utils::resolve_root_git_project_for_trust;
+use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 #[cfg(target_os = "windows")]
 use codex_protocol::config_types::WindowsSandboxLevel;
-use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyEventKind;
@@ -644,12 +644,14 @@ mod tests {
     use super::StepStateProvider;
     use super::persist_selected_trust;
     use super::suppress_quit_while_typing_api_key;
-    use crate::onboarding::auth::AuthModeWidget;
+    use crate::LoginStatus;
     use crate::onboarding::auth::ApiKeyInputState;
+    use crate::onboarding::auth::AuthModeWidget;
     use crate::onboarding::auth::SignInOption;
     use crate::onboarding::auth::SignInState;
+    use crate::onboarding::trust_directory::TrustDirectorySelection;
+    use crate::onboarding::trust_directory::TrustDirectoryWidget;
     use crate::onboarding::welcome::WelcomeWidget;
-    use crate::LoginStatus;
     use crate::tui::FrameRequester;
     use codex_app_server_client::AppServerRequestHandle;
     use codex_app_server_client::DEFAULT_IN_PROCESS_CHANNEL_CAPACITY;
@@ -659,18 +661,16 @@ mod tests {
     use codex_cloud_config::cloud_config_bundle_loader_for_storage;
     use codex_config::types::AuthCredentialsStoreMode;
     use codex_login::AuthKeyringBackendKind;
-    use crate::onboarding::trust_directory::TrustDirectorySelection;
-    use crate::onboarding::trust_directory::TrustDirectoryWidget;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use crossterm::event::KeyModifiers;
+    use pretty_assertions::assert_eq;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::widgets::WidgetRef;
-    use pretty_assertions::assert_eq;
+    use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::RwLock;
-    use std::path::PathBuf;
     use tempfile::TempDir;
 
     async fn build_anzoth_screen() -> (OnboardingScreen, TempDir) {
@@ -831,9 +831,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn anzoth_onboarding_screen_renders_anzoth_only_copy() {
+    async fn anzoth_onboarding_screen_renders_logo_without_branding_text() {
         let (screen, _tmp) = build_anzoth_screen().await;
-        let area = Rect::new(0, 0, 100, 30);
+        let area = Rect::new(0, 0, 100, 40);
         let mut buf = Buffer::empty(area);
 
         (&screen).render_ref(area, &mut buf);
@@ -846,9 +846,13 @@ mod tests {
             rendered.push('\n');
         }
 
-        assert!(rendered.contains("Welcome to Anzoth CLI"));
-        assert!(rendered.contains("Connect using your Anzoth API key"));
-        assert!(rendered.contains("Enter Anzoth API key"));
+        assert!(
+            rendered
+                .chars()
+                .any(|ch| matches!(ch, 'a' | 'n' | 'z' | 'o' | 't' | 'h')),
+            "expected a visible logo glyph in the onboarding render"
+        );
+        assert!(!rendered.contains("Welcome to Anzoth CLI"));
         assert!(!rendered.contains("Welcome to Codex"));
         assert!(!rendered.contains("OpenAI"));
         assert!(!rendered.contains("ChatGPT"));

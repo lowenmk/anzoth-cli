@@ -1560,8 +1560,7 @@ impl App {
                                     Line::from(vec!["• ".dim(), "Sandbox ready".into()]),
                                     Line::from(vec![
                                         "  ".into(),
-                                        SANDBOX_READY_MESSAGE
-                                            .dark_gray(),
+                                        SANDBOX_READY_MESSAGE.dark_gray(),
                                     ]),
                                 ]);
                             } else {
@@ -1593,8 +1592,7 @@ impl App {
                                     Line::from(vec!["• ".dim(), "Sandbox ready".into()]),
                                     Line::from(vec![
                                         "  ".into(),
-                                        SANDBOX_READY_MESSAGE
-                                            .dark_gray(),
+                                        SANDBOX_READY_MESSAGE.dark_gray(),
                                     ]),
                                 ]);
                             }

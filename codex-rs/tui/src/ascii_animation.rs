@@ -93,6 +93,11 @@ impl AsciiAnimation {
     fn frames(&self) -> &'static [&'static str] {
         self.variants[self.variant_idx]
     }
+
+    #[cfg(test)]
+    pub(crate) fn variant_idx_for_tests(&self) -> usize {
+        self.variant_idx
+    }
 }
 
 #[cfg(test)]
