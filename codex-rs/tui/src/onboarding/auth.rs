@@ -438,7 +438,7 @@ impl AuthModeWidget {
         let mut lines: Vec<Line> = vec![
             Line::from(vec![
                 "  ".into(),
-                "Sign in with ChatGPT to use Codex as part of your paid plan".into(),
+                "Sign in with Anzoth to use Anzoth-Ai as part of your paid plan".into(),
             ]),
             Line::from(vec![
                 "  ".into(),
@@ -477,7 +477,7 @@ impl AuthModeWidget {
         };
 
         let chatgpt_description = if !self.is_chatgpt_login_allowed() {
-            "ChatGPT login is disabled"
+            "Anzoth login is disabled"
         } else {
             "Usage included with Plus, Pro, Business, and Enterprise plans"
         };
@@ -489,7 +489,7 @@ impl AuthModeWidget {
                     lines.extend(create_mode_item(
                         idx,
                         option,
-                        "Sign in with ChatGPT",
+                        "Sign in with Anzoth",
                         chatgpt_description,
                     ));
                 }
@@ -515,7 +515,7 @@ impl AuthModeWidget {
 
         if !self.is_api_login_allowed() {
             lines.push(
-                "  API key login is disabled by this workspace. Sign in with ChatGPT to continue."
+                "  API key login is disabled by this workspace. Sign in with Anzoth to continue."
                     .dim()
                     .into(),
             );
@@ -1178,6 +1178,63 @@ mod tests {
         (widget, codex_home)
     }
 
+    async fn widget_forced_anzoth_pick_mode() -> (AuthModeWidget, TempDir) {
+        let codex_home = TempDir::new().unwrap();
+        let codex_home_path = codex_home.path().to_path_buf();
+        let config = ConfigBuilder::default()
+            .codex_home(codex_home_path.clone())
+            .build()
+            .await
+            .unwrap();
+        let client = InProcessAppServerClient::start(InProcessClientStartArgs {
+            arg0_paths: Arg0DispatchPaths::default(),
+            config: Arc::new(config),
+            cli_overrides: Vec::new(),
+            loader_overrides: Default::default(),
+            strict_config: false,
+            cloud_config_bundle: cloud_config_bundle_loader_for_storage(
+                codex_home_path.clone(),
+                /*enable_codex_api_key_env*/ false,
+                AuthCredentialsStoreMode::File,
+                AuthKeyringBackendKind::default(),
+                "https://chatgpt.com/backend-api/".to_string(),
+                /*auth_route_config*/ None,
+            )
+            .await,
+            feedback: codex_feedback::CodexFeedback::new(),
+            log_db: None,
+            state_db: None,
+            environment_manager: Arc::new(
+                codex_app_server_client::EnvironmentManager::default_for_tests(),
+            ),
+            config_warnings: Vec::new(),
+            session_source: serde_json::from_value(serde_json::json!("cli"))
+                .expect("cli session source should deserialize"),
+            enable_codex_api_key_env: false,
+            client_name: "test".to_string(),
+            client_version: "test".to_string(),
+            experimental_api: true,
+            mcp_server_openai_form_elicitation: false,
+            opt_out_notification_methods: Vec::new(),
+            channel_capacity: DEFAULT_IN_PROCESS_CHANNEL_CAPACITY,
+        })
+        .await
+        .unwrap();
+        let widget = AuthModeWidget {
+            request_frame: FrameRequester::test_dummy(),
+            highlighted_mode: SignInOption::ChatGpt,
+            error: Arc::new(RwLock::new(None)),
+            sign_in_state: Arc::new(RwLock::new(SignInState::PickMode)),
+            login_status: LoginStatus::NotAuthenticated,
+            app_server_request_handle: AppServerRequestHandle::InProcess(client.request_handle()),
+            forced_login_method: Some(ForcedLoginMethod::Api),
+            anzoth_api_key_only_flow: false,
+            animations_enabled: true,
+            animations_suppressed: std::cell::Cell::new(false),
+        };
+        (widget, codex_home)
+    }
+
     async fn widget_forced_anzoth() -> (AuthModeWidget, TempDir) {
         let codex_home = TempDir::new().unwrap();
         let codex_home_path = codex_home.path().to_path_buf();
@@ -1281,6 +1338,34 @@ mod tests {
             validate_anzoth_api_key("not-anzoth"),
             Err("Anzoth API keys must start with `anz_`.")
         );
+    }
+
+    #[tokio::test]
+    async fn anzoth_pick_mode_renders_anzoth_only_copy() {
+        let (widget, _tmp) = widget_forced_anzoth_pick_mode().await;
+        let area = Rect::new(0, 0, 80, 20);
+        let mut buf = Buffer::empty(area);
+
+        widget.render_ref(area, &mut buf);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+
+        assert!(rendered.contains("Sign in with Anzoth to use Anzoth-Ai as part of your paid plan"));
+        assert!(rendered.contains("Sign in with Anzoth"));
+        assert!(rendered.contains("Anzoth login is disabled"));
+        assert!(rendered.contains("Provide your own API key"));
+        assert!(rendered.contains("Pay for what you use"));
+        assert!(rendered.contains("Press enter to continue"));
+        assert!(!rendered.contains("Sign in with ChatGPT"));
+        assert!(!rendered.contains("ChatGPT login is disabled"));
+        assert!(!rendered.contains("Welcome to Codex"));
+        assert!(!rendered.contains("OpenAI"));
     }
 
     #[tokio::test]
