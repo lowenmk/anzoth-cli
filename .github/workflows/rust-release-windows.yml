@@ -260,6 +260,37 @@ jobs:
           account-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
           certificate-profile-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
 
+      - if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+        name: Build Windows installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer_project="${GITHUB_WORKSPACE}/installer/windows/AnzothInstaller.csproj"
+          output_dir="$CARGO_TARGET_DIR/${{ matrix.target }}/release"
+          dotnet publish "$installer_project" \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false \
+            -p:EnableCompressionInSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:AssemblyName=Anzoth-Setup-x64 \
+            --output "$output_dir"
+
+      - if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+        name: Sign Windows installer
+        uses: ./.github/actions/windows-code-sign
+        with:
+          target: ${{ matrix.target }}
+          binaries: Anzoth-Setup-x64
+          client-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_SUBSCRIPTION_ID }}
+          endpoint: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          account-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
+          certificate-profile-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
+
       - name: Stage artifacts
         shell: bash
         run: |
@@ -270,6 +301,11 @@ jobs:
             cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/${binary}.exe" \
               "$dest/${binary}-${{ matrix.target }}.exe"
           done
+
+          if [[ "${{ matrix.target }}" == "x86_64-pc-windows-msvc" ]]; then
+            cp "$CARGO_TARGET_DIR/${{ matrix.target }}/release/Anzoth-Setup-x64.exe" \
+              "$dest/Anzoth-Setup-x64.exe"
+          fi
 
       - name: Build Codex package archives
         shell: bash
@@ -363,6 +399,10 @@ jobs:
 
             # Do not try to compress signature bundles.
             if [[ "$base" == *.sigstore ]]; then
+              exit 0
+            fi
+
+            if [[ "$base" == "Anzoth-Setup-x64.exe" ]]; then
               exit 0
             fi
 
