@@ -8,8 +8,15 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::WidgetRef;
 use std::cell::Cell;
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::ascii_animation::AsciiAnimation;
+use crate::frames::ANZOTH_SMALL_ALT_FRAME_HEIGHT;
+use crate::frames::ANZOTH_SMALL_ALT_FRAME_WIDTH;
+use crate::frames::ANZOTH_SMALL_ALT_SEQUENCE;
+use crate::frames::FRAME_TICK_DEFAULT;
+use crate::frames::FRAMES_ANZOTH_SMALL_ALT;
 use crate::key_hint::KeyBindingListExt;
 use crate::onboarding::keys;
 use crate::onboarding::onboarding_screen::KeyboardHandler;
@@ -18,15 +25,76 @@ use crate::tui::FrameRequester;
 
 use super::onboarding_screen::StepState;
 
-const MIN_ANIMATION_HEIGHT: u16 = 37;
-const MIN_ANIMATION_WIDTH: u16 = 60;
+pub(crate) const MIN_ANIMATED_LOGO_HEIGHT: u16 = 37;
+pub(crate) const MIN_ANIMATED_LOGO_WIDTH: u16 = 60;
+pub(crate) const MIN_SMALL_LOGO_HEIGHT: u16 = ANZOTH_SMALL_ALT_FRAME_HEIGHT;
+pub(crate) const MIN_SMALL_LOGO_WIDTH: u16 = ANZOTH_SMALL_ALT_FRAME_WIDTH;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WelcomeLogoMode {
+    Animated,
+    SmallAnimation,
+    Hidden,
+}
+
+struct SmallWelcomeAnimation {
+    request_frame: FrameRequester,
+    start: Cell<Instant>,
+}
+
+impl SmallWelcomeAnimation {
+    fn new(request_frame: FrameRequester) -> Self {
+        Self {
+            request_frame,
+            start: Cell::new(Instant::now()),
+        }
+    }
+
+    fn reset(&self) {
+        self.start.set(Instant::now());
+    }
+
+    fn schedule_next_frame(&self) {
+        let tick_ms = FRAME_TICK_DEFAULT.as_millis();
+        if tick_ms == 0 {
+            self.request_frame.schedule_frame();
+            return;
+        }
+        let elapsed_ms = self.start.get().elapsed().as_millis();
+        let rem_ms = elapsed_ms % tick_ms;
+        let delay_ms = if rem_ms == 0 {
+            tick_ms
+        } else {
+            tick_ms - rem_ms
+        };
+        self.request_frame
+            .schedule_frame_in(Duration::from_millis(delay_ms as u64));
+    }
+
+    fn current_frame(&self) -> &'static str {
+        let tick_ms = FRAME_TICK_DEFAULT.as_millis();
+        let tick = if tick_ms == 0 {
+            0usize
+        } else {
+            (self.start.get().elapsed().as_millis() / tick_ms) as usize
+        };
+        FRAMES_ANZOTH_SMALL_ALT[ANZOTH_SMALL_ALT_SEQUENCE[tick % ANZOTH_SMALL_ALT_SEQUENCE.len()]]
+    }
+
+    #[cfg(test)]
+    fn frame_index_for_tick(tick: usize) -> usize {
+        ANZOTH_SMALL_ALT_SEQUENCE[tick % ANZOTH_SMALL_ALT_SEQUENCE.len()]
+    }
+}
 
 pub(crate) struct WelcomeWidget {
     pub is_logged_in: bool,
     animation: AsciiAnimation,
+    small_animation: SmallWelcomeAnimation,
     animations_enabled: bool,
     animations_suppressed: Cell<bool>,
     layout_area: Cell<Option<Rect>>,
+    last_logo_mode: Cell<Option<WelcomeLogoMode>>,
 }
 
 impl KeyboardHandler for WelcomeWidget {
@@ -53,10 +121,12 @@ impl WelcomeWidget {
     ) -> Self {
         Self {
             is_logged_in,
-            animation: AsciiAnimation::new(request_frame),
+            animation: AsciiAnimation::new(request_frame.clone()),
+            small_animation: SmallWelcomeAnimation::new(request_frame),
             animations_enabled,
             animations_suppressed: Cell::new(false),
             layout_area: Cell::new(None),
+            last_logo_mode: Cell::new(None),
         }
     }
 
@@ -67,43 +137,59 @@ impl WelcomeWidget {
     pub(crate) fn set_animations_suppressed(&self, suppressed: bool) {
         self.animations_suppressed.set(suppressed);
     }
+
+    fn logo_mode(&self, layout_area: Rect) -> WelcomeLogoMode {
+        if !self.animations_enabled || self.animations_suppressed.get() {
+            return WelcomeLogoMode::Hidden;
+        }
+        if layout_area.height >= MIN_ANIMATED_LOGO_HEIGHT
+            && layout_area.width >= MIN_ANIMATED_LOGO_WIDTH
+        {
+            WelcomeLogoMode::Animated
+        } else if layout_area.height >= MIN_SMALL_LOGO_HEIGHT
+            && layout_area.width >= MIN_SMALL_LOGO_WIDTH
+        {
+            WelcomeLogoMode::SmallAnimation
+        } else {
+            WelcomeLogoMode::Hidden
+        }
+    }
 }
 
 impl WidgetRef for &WelcomeWidget {
     fn render_ref(&self, area: Rect, buf: &mut Buffer) {
         Clear.render(area, buf);
-        if self.animations_enabled && !self.animations_suppressed.get() {
-            self.animation.schedule_next_frame();
-        }
-
         let layout_area = self.layout_area.get().unwrap_or(area);
-        // Skip the animation entirely when the viewport is too small so we don't clip frames.
-        let show_animation = self.animations_enabled
-            && !self.animations_suppressed.get()
-            && layout_area.height >= MIN_ANIMATION_HEIGHT
-            && layout_area.width >= MIN_ANIMATION_WIDTH;
-
-        if show_animation {
-            let frame = self.animation.current_frame();
-            let lines: Vec<Line> = frame.lines().map(Into::into).collect();
-            Paragraph::new(lines).render(area, buf);
-        } else {
-            self.render_minimal_fallback(area, buf);
+        let mode = self.logo_mode(layout_area);
+        if self.last_logo_mode.get() != Some(mode) {
+            if matches!(mode, WelcomeLogoMode::SmallAnimation) {
+                self.small_animation.reset();
+            }
+            self.last_logo_mode.set(Some(mode));
+        }
+        match mode {
+            WelcomeLogoMode::Animated => {
+                self.animation.schedule_next_frame();
+                let frame = self.animation.current_frame();
+                let lines: Vec<Line> = frame.lines().map(Into::into).collect();
+                Paragraph::new(lines).render(area, buf);
+            }
+            WelcomeLogoMode::SmallAnimation => self.render_small_animation(area, buf),
+            WelcomeLogoMode::Hidden => {}
         }
     }
 }
 
 impl WelcomeWidget {
-    fn render_minimal_fallback(&self, area: Rect, buf: &mut Buffer) {
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-
-        let x = area.x + area.width / 2;
-        let y = area.y + area.height / 2;
-        if let Some(cell) = buf.cell_mut((x, y)) {
-            cell.set_symbol("o");
-        }
+    fn render_small_animation(&self, area: Rect, buf: &mut Buffer) {
+        self.small_animation.schedule_next_frame();
+        let lines: Vec<Line> = self
+            .small_animation
+            .current_frame()
+            .lines()
+            .map(Into::into)
+            .collect();
+        Paragraph::new(lines).centered().render(area, buf);
     }
 }
 
@@ -124,6 +210,11 @@ mod tests {
     use pretty_assertions::assert_eq;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
+    use tokio::sync::broadcast;
+    use tokio::time::Duration;
+    use tokio_util::time::FutureExt;
+
+    use crate::frames::FRAME_TICK_DEFAULT;
 
     static VARIANT_A: [&str; 1] = ["frame-a"];
     static VARIANT_B: [&str; 1] = ["frame-b"];
@@ -151,7 +242,7 @@ mod tests {
             FrameRequester::test_dummy(),
             /*animations_enabled*/ true,
         );
-        let area = Rect::new(0, 0, MIN_ANIMATION_WIDTH, MIN_ANIMATION_HEIGHT);
+        let area = Rect::new(0, 0, MIN_ANIMATED_LOGO_WIDTH, MIN_ANIMATED_LOGO_HEIGHT);
         let mut buf = Buffer::empty(area);
         (&widget).render(area, &mut buf);
 
@@ -174,17 +265,29 @@ mod tests {
     }
 
     #[test]
-    fn welcome_uses_minimal_fallback_below_height_breakpoint() {
-        let widget = WelcomeWidget::new(
-            /*is_logged_in*/ false,
-            FrameRequester::test_dummy(),
-            /*animations_enabled*/ true,
+    fn welcome_uses_small_animation_in_medium_viewport() {
+        let widget = WelcomeWidget {
+            is_logged_in: false,
+            animation: AsciiAnimation::with_variants(
+                FrameRequester::test_dummy(),
+                &VARIANTS,
+                /*variant_idx*/ 0,
+            ),
+            small_animation: SmallWelcomeAnimation::new(FrameRequester::test_dummy()),
+            animations_enabled: true,
+            animations_suppressed: Cell::new(false),
+            layout_area: Cell::new(None),
+            last_logo_mode: Cell::new(None),
+        };
+        widget.small_animation.start.set(
+            std::time::Instant::now()
+                - Duration::from_millis(FRAME_TICK_DEFAULT.as_millis() as u64 * 100),
         );
-        let area = Rect::new(0, 0, MIN_ANIMATION_WIDTH, MIN_ANIMATION_HEIGHT - 1);
+        let area = Rect::new(0, 0, 80, 30);
         let mut buf = Buffer::empty(area);
         (&widget).render(area, &mut buf);
 
-        assert_eq!(occupied_rows(&buf), 1);
+        assert_eq!(widget.logo_mode(area), WelcomeLogoMode::SmallAnimation);
         let mut rendered = String::new();
         for y in 0..area.height {
             for x in 0..area.width {
@@ -192,8 +295,132 @@ mod tests {
             }
             rendered.push('\n');
         }
-        assert!(rendered.contains("o"));
+        assert!(!rendered.contains("Codex"));
         assert!(!rendered.contains("Welcome"));
+    }
+
+    #[test]
+    fn welcome_omits_logo_in_tiny_viewport() {
+        let widget = WelcomeWidget::new(
+            /*is_logged_in*/ false,
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ true,
+        );
+        let area = Rect::new(0, 0, MIN_SMALL_LOGO_WIDTH - 1, MIN_SMALL_LOGO_HEIGHT - 1);
+        let mut buf = Buffer::empty(area);
+        (&widget).render(area, &mut buf);
+
+        assert_eq!(occupied_rows(&buf), 0);
+    }
+
+    #[test]
+    fn welcome_small_animation_sequence_matches_spec() {
+        let expected = {
+            let mut seq = vec![91usize, 91];
+            seq.extend((1usize..=90).rev());
+            seq.extend([0usize, 0, 0, 0]);
+            seq.extend(1usize..=90);
+            seq
+        };
+        let actual = (0..ANZOTH_SMALL_ALT_SEQUENCE.len())
+            .map(SmallWelcomeAnimation::frame_index_for_tick)
+            .collect::<Vec<_>>();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn welcome_small_animation_schedules_animation_frames_only_when_visible() {
+        let (draw_tx, mut draw_rx) = broadcast::channel(16);
+        let widget = WelcomeWidget::new(
+            /*is_logged_in*/ false,
+            FrameRequester::new(draw_tx),
+            /*animations_enabled*/ true,
+        );
+        let area = Rect::new(0, 0, 80, 30);
+        let mut buf = Buffer::empty(area);
+        (&widget).render(area, &mut buf);
+
+        tokio::time::advance(Duration::from_millis(100)).await;
+        let draw = draw_rx
+            .recv()
+            .timeout(Duration::from_millis(10))
+            .await
+            .expect("timed out waiting for small animated redraw");
+        assert!(draw.is_ok(), "small animation should schedule redraws");
+
+        let tiny_area = Rect::new(0, 0, MIN_SMALL_LOGO_WIDTH - 1, MIN_SMALL_LOGO_HEIGHT - 1);
+        let mut tiny_buf = Buffer::empty(tiny_area);
+        (&widget).render(tiny_area, &mut tiny_buf);
+
+        tokio::time::advance(Duration::from_millis(100)).await;
+        let draw = draw_rx.recv().timeout(Duration::from_millis(10)).await;
+        assert!(draw.is_err(), "hidden logo should not schedule redraws");
+    }
+
+    #[tokio::test(flavor = "current_thread", start_paused = true)]
+    async fn welcome_animated_logo_schedules_animation_frames() {
+        let (draw_tx, mut draw_rx) = broadcast::channel(16);
+        let widget = WelcomeWidget::new(
+            /*is_logged_in*/ false,
+            FrameRequester::new(draw_tx),
+            /*animations_enabled*/ true,
+        );
+        let area = Rect::new(0, 0, MIN_ANIMATED_LOGO_WIDTH, MIN_ANIMATED_LOGO_HEIGHT);
+        let mut buf = Buffer::empty(area);
+        (&widget).render(area, &mut buf);
+
+        tokio::time::advance(Duration::from_millis(100)).await;
+        let draw = draw_rx
+            .recv()
+            .timeout(Duration::from_millis(10))
+            .await
+            .expect("timed out waiting for animated redraw");
+        assert!(draw.is_ok(), "animated logo should schedule redraws");
+    }
+
+    #[test]
+    fn welcome_logo_mode_thresholds_are_explicit() {
+        let widget = WelcomeWidget::new(
+            /*is_logged_in*/ false,
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ true,
+        );
+        assert_eq!(
+            widget.logo_mode(Rect::new(
+                0,
+                0,
+                MIN_ANIMATED_LOGO_WIDTH,
+                MIN_ANIMATED_LOGO_HEIGHT
+            )),
+            WelcomeLogoMode::Animated
+        );
+        assert_eq!(
+            widget.logo_mode(Rect::new(0, 0, 80, 30)),
+            WelcomeLogoMode::SmallAnimation
+        );
+        assert_eq!(
+            widget.logo_mode(Rect::new(
+                0,
+                0,
+                MIN_SMALL_LOGO_WIDTH - 1,
+                MIN_SMALL_LOGO_HEIGHT - 1
+            )),
+            WelcomeLogoMode::Hidden
+        );
+    }
+
+    #[test]
+    fn welcome_animations_disabled_no_longer_selects_old_miniature() {
+        let widget = WelcomeWidget::new(
+            /*is_logged_in*/ false,
+            FrameRequester::test_dummy(),
+            /*animations_enabled*/ false,
+        );
+        let area = Rect::new(0, 0, 80, 30);
+        let mut buf = Buffer::empty(area);
+        (&widget).render(area, &mut buf);
+
+        assert_eq!(occupied_rows(&buf), 0);
     }
 
     #[test]
@@ -205,9 +432,11 @@ mod tests {
                 &VARIANTS,
                 /*variant_idx*/ 0,
             ),
+            small_animation: SmallWelcomeAnimation::new(FrameRequester::test_dummy()),
             animations_enabled: true,
             animations_suppressed: Cell::new(false),
             layout_area: Cell::new(None),
+            last_logo_mode: Cell::new(None),
         };
 
         let before = widget.animation.current_frame();
@@ -229,9 +458,11 @@ mod tests {
                 &VARIANTS,
                 /*variant_idx*/ 0,
             ),
+            small_animation: SmallWelcomeAnimation::new(FrameRequester::test_dummy()),
             animations_enabled: true,
             animations_suppressed: Cell::new(false),
             layout_area: Cell::new(None),
+            last_logo_mode: Cell::new(None),
         };
 
         let before = widget.animation.current_frame();

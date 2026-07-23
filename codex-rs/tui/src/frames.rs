@@ -56,6 +56,113 @@ pub(crate) const FRAMES_VBARS: [&str; 36] = frames_for!("vbars");
 pub(crate) const FRAMES_SHAPES: [&str; 36] = frames_for!("shapes");
 pub(crate) const FRAMES_SLUG: [&str; 36] = frames_for!("slug");
 
+pub(crate) const FRAMES_ANZOTH_SMALL_ALT: [&str; 92] = [
+    include_str!("../frames/anzoth_small_alt/frame_0.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_1.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_2.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_3.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_4.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_5.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_6.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_7.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_8.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_9.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_10.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_11.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_12.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_13.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_14.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_15.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_16.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_17.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_18.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_19.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_20.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_21.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_22.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_23.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_24.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_25.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_26.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_27.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_28.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_29.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_30.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_31.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_32.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_33.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_34.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_35.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_36.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_37.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_38.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_39.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_40.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_41.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_42.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_43.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_44.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_45.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_46.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_47.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_48.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_49.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_50.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_51.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_52.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_53.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_54.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_55.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_56.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_57.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_58.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_59.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_60.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_61.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_62.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_63.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_64.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_65.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_66.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_67.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_68.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_69.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_70.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_71.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_72.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_73.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_74.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_75.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_76.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_77.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_78.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_79.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_80.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_81.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_82.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_83.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_84.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_85.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_86.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_87.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_88.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_89.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_90.txt"),
+    include_str!("../frames/anzoth_small_alt/frame_91.txt"),
+];
+pub(crate) const ANZOTH_SMALL_ALT_FRAME_WIDTH: u16 = 25;
+pub(crate) const ANZOTH_SMALL_ALT_FRAME_HEIGHT: u16 = 13;
+pub(crate) const ANZOTH_SMALL_ALT_SEQUENCE: [usize; 186] = [
+    91, 91, 90, 89, 88, 87, 86, 85, 84, 83, 82, 81, 80, 79, 78, 77, 76, 75, 74, 73, 72, 71, 70, 69,
+    68, 67, 66, 65, 64, 63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48, 47, 46, 45,
+    44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21,
+    20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0, 0, 0, 1, 2, 3, 4,
+    5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+    54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77,
+    78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90,
+];
+
 pub(crate) const ALL_VARIANTS: &[&[&str]] = &[
     &FRAMES_ANZOTH,
     &FRAMES_DEFAULT,
@@ -141,12 +248,6 @@ mod tests {
                 "frame contains unsupported glyphs: {letters:?}"
             );
             assert!(
-                !occupied
-                    .iter()
-                    .any(|(_, _, ch)| matches!(ch, '░' | '▒' | '▓' | '█')),
-                "frame contains block/shade glyphs"
-            );
-            assert!(
                 !frame.contains("Anzoth") && !frame.contains("CLI") && !frame.contains("Codex"),
                 "frame should not contain branding text"
             );
@@ -169,6 +270,49 @@ mod tests {
         assert!(
             loop_continuity_score(FRAMES_ANZOTH[0], FRAMES_ANZOTH[35]) >= 0.72,
             "frame 1 and frame 36 should form a clean loop"
+        );
+    }
+
+    #[test]
+    fn anzoth_small_alt_frames_are_embedded_and_uniform() {
+        assert_eq!(FRAMES_ANZOTH_SMALL_ALT.len(), 92);
+        let mut expected_dims: Option<(usize, usize)> = None;
+        for frame in FRAMES_ANZOTH_SMALL_ALT {
+            let dims = frame_dimensions(frame);
+            assert_eq!(
+                dims,
+                (
+                    usize::from(ANZOTH_SMALL_ALT_FRAME_WIDTH),
+                    usize::from(ANZOTH_SMALL_ALT_FRAME_HEIGHT)
+                )
+            );
+            match expected_dims {
+                Some(expected) => assert_eq!(dims, expected),
+                None => expected_dims = Some(dims),
+            }
+            assert!(!frame.contains('\t'));
+            assert!(!frame.contains("\r\n"));
+            assert!(!frame.contains('\r'));
+        }
+    }
+
+    #[test]
+    fn anzoth_small_alt_sequence_matches_spec() {
+        assert_eq!(ANZOTH_SMALL_ALT_SEQUENCE.len(), 186);
+        assert_eq!(&ANZOTH_SMALL_ALT_SEQUENCE[0..2], &[91, 91]);
+        assert_eq!(ANZOTH_SMALL_ALT_SEQUENCE[92], 0);
+        assert_eq!(&ANZOTH_SMALL_ALT_SEQUENCE[92..96], &[0, 0, 0, 0]);
+        assert_eq!(ANZOTH_SMALL_ALT_SEQUENCE[96], 1);
+        assert_eq!(ANZOTH_SMALL_ALT_SEQUENCE[185], 90);
+    }
+
+    #[test]
+    fn anzoth_small_alt_has_non_ascii_glyphs() {
+        let frame = FRAMES_ANZOTH_SMALL_ALT[0];
+        assert!(
+            frame
+                .chars()
+                .any(|ch| !ch.is_ascii() && ch != '\n' && ch != ' ')
         );
     }
 
