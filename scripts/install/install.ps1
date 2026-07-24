@@ -124,7 +124,7 @@ function Get-PackageArchiveDigest {
         }
     }
 
-    throw "Could not find SHA-256 digest for $AssetName in codex-package_SHA256SUMS."
+    throw "Could not find SHA-256 digest for $AssetName in anzoth-package_SHA256SUMS."
 }
 
 function Path-Contains {
@@ -262,12 +262,12 @@ function Get-CurrentInstalledVersion {
         [string]$StandaloneCurrentDir
     )
 
-    $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "bin\codex.exe")
+    $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "bin\anzoth.exe")
     if (-not [string]::IsNullOrWhiteSpace($standaloneVersion)) {
         return $standaloneVersion
     }
 
-    $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "codex.exe")
+    $standaloneVersion = Get-VersionFromBinary -CodexPath (Join-Path $StandaloneCurrentDir "anzoth.exe")
     if (-not [string]::IsNullOrWhiteSpace($standaloneVersion)) {
         return $standaloneVersion
     }
@@ -293,7 +293,7 @@ function Test-OldStandaloneBinLayout {
         return $false
     }
 
-    $requiredFiles = @("codex.exe", "rg.exe")
+    $requiredFiles = @("anzoth.exe", "rg.exe")
     foreach ($fileName in $requiredFiles) {
         if (-not (Test-Path -LiteralPath (Join-Path $VisibleBinDir $fileName) -PathType Leaf)) {
             return $false
@@ -301,7 +301,7 @@ function Test-OldStandaloneBinLayout {
     }
 
     $knownFiles = @(
-        "codex.exe",
+        "anzoth.exe",
         "rg.exe",
         "codex-command-runner.exe",
         "codex-windows-sandbox.exe",
@@ -536,8 +536,8 @@ function Test-PackageContentsAreComplete {
     }
 
     $expectedFiles = @(
-        "codex-package.json",
-        "bin\codex.exe",
+        "anzoth-package.json",
+        "bin\anzoth.exe",
         "bin\codex-code-mode-host.exe",
         "codex-path\rg.exe",
         "codex-resources\codex-command-runner.exe",
@@ -562,7 +562,7 @@ function Test-LegacyPlatformNpmContentsAreComplete {
     }
 
     $expectedFiles = @(
-        "codex.exe",
+        "anzoth.exe",
         "codex-resources\codex-command-runner.exe",
         "codex-resources\codex-windows-sandbox-setup.exe",
         "codex-resources\rg.exe"
@@ -669,9 +669,9 @@ function Maybe-HandleConflictingInstall {
     $manager = $Conflict.Manager
 
     $uninstallArgs = if ($manager -eq "bun") {
-        @("remove", "-g", "@openai/codex")
+        @("remove", "-g", "@anzoth/cli")
     } else {
-        @("uninstall", "-g", "@openai/codex")
+        @("uninstall", "-g", "@anzoth/cli")
     }
     $uninstallCommand = if ($manager -eq "bun") { "bun" } else { "npm" }
 
@@ -683,7 +683,7 @@ function Maybe-HandleConflictingInstall {
             Write-WarningStep "Failed to uninstall the existing $manager-managed Codex. Continuing with the standalone install."
         }
     } else {
-        Write-WarningStep "Leaving the existing $manager-managed Codex installed. PATH order will determine which codex runs."
+        Write-WarningStep "Leaving the existing $manager-managed Anzoth installed. PATH order will determine which anzoth runs."
     }
 }
 
@@ -692,10 +692,10 @@ function Test-VisibleCodexCommand {
         [string]$VisibleBinDir
     )
 
-    $codexCommand = Join-Path $VisibleBinDir "codex.exe"
-    & $codexCommand --version *> $null
+    $anzothCommand = Join-Path $VisibleBinDir "anzoth.exe"
+    & $anzothCommand --version *> $null
     if ($LASTEXITCODE -ne 0) {
-        throw "Installed Codex command failed verification: $codexCommand --version"
+        throw "Installed Anzoth command failed verification: $anzothCommand --version"
     }
 }
 
@@ -740,7 +740,7 @@ $releasesDir = Join-Path $standaloneRoot "releases"
 $currentDir = Join-Path $standaloneRoot "current"
 $lockPath = Join-Path $standaloneRoot "install.lock"
 
-$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\OpenAI\Codex\bin"
+$defaultVisibleBinDir = Join-Path $env:LOCALAPPDATA "Programs\Anzoth\bin"
 if ([string]::IsNullOrWhiteSpace($env:CODEX_INSTALL_DIR)) {
     $visibleBinDir = $defaultVisibleBinDir
 } else {
@@ -755,11 +755,11 @@ $releaseName = "$resolvedVersion-$target"
 $releaseDir = Join-Path $releasesDir $releaseName
 
 if (-not [string]::IsNullOrWhiteSpace($currentVersion) -and $currentVersion -ne $resolvedVersion) {
-    Write-Step "Updating Codex CLI from $currentVersion to $resolvedVersion"
+    Write-Step "Updating Anzoth CLI from $currentVersion to $resolvedVersion"
 } elseif (-not [string]::IsNullOrWhiteSpace($currentVersion)) {
-    Write-Step "Updating Codex CLI"
+    Write-Step "Updating Anzoth CLI"
 } else {
-    Write-Step "Installing Codex CLI"
+    Write-Step "Installing Anzoth CLI"
 }
 Write-Step "Detected platform: $platformLabel"
 Write-Step "Resolved version: $resolvedVersion"
@@ -767,18 +767,18 @@ Write-Step "Resolved version: $resolvedVersion"
 $conflictingInstall = Get-ConflictingInstall -VisibleBinDir $visibleBinDir
 $oldStandaloneBackup = $null
 
-$packageAsset = "codex-package-$target.tar.gz"
-$checksumAsset = "codex-package_SHA256SUMS"
+$packageAsset = "anzoth-package-$target.tar.gz"
+$checksumAsset = "anzoth-package_SHA256SUMS"
 $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata
 $checksumMetadata = Find-ReleaseAssetMetadata -AssetName $checksumAsset -ReleaseMetadata $releaseMetadata
 $installLayout = "Package"
 if ($null -eq $packageMetadata -or $null -eq $checksumMetadata) {
-    $packageAsset = "codex-npm-$npmTag-$resolvedVersion.tgz"
+    $packageAsset = "anzoth-npm-$npmTag-$resolvedVersion.tgz"
     $packageMetadata = Find-ReleaseAssetMetadata -AssetName $packageAsset -ReleaseMetadata $releaseMetadata
     if ($null -ne $packageMetadata) {
         $installLayout = "LegacyPlatformNpm"
     } else {
-        throw "Could not find Codex package or platform npm release assets for Codex $resolvedVersion."
+        throw "Could not find Anzoth package or platform npm release assets for Anzoth $resolvedVersion."
     }
     $checksumMetadata = $null
 }
@@ -798,7 +798,7 @@ try {
             $checksumPath = Join-Path $tempDir $checksumAsset
             $stagingDir = Join-Path $releasesDir ".staging.$releaseName.$PID"
 
-            Write-Step "Downloading Codex CLI"
+            Write-Step "Downloading Anzoth CLI"
             if ($installLayout -eq "Package") {
                 Invoke-WebRequest -Uri $checksumMetadata.Url -OutFile $checksumPath
                 Test-ArchiveDigest -ArchivePath $checksumPath -ExpectedDigest $checksumMetadata.Sha256
@@ -817,7 +817,7 @@ try {
             if ($installLayout -eq "Package") {
                 tar -xzf $archivePath -C $stagingDir
                 if (-not (Test-PackageContentsAreComplete -PackageDir $stagingDir)) {
-                    throw "Downloaded Codex package archive did not contain the expected package layout."
+                    throw "Downloaded Anzoth package archive did not contain the expected package layout."
                 }
             } else {
                 $extractDir = Join-Path $tempDir "extract"
@@ -825,13 +825,13 @@ try {
                 tar -xzf $archivePath -C $extractDir
 
                 $vendorRoot = Join-Path $extractDir "package/vendor/$target"
-                $resourcesDir = Join-Path $stagingDir "codex-resources"
+                $resourcesDir = Join-Path $stagingDir "anzoth-resources"
                 New-Item -ItemType Directory -Force -Path $resourcesDir | Out-Null
                 $copyMap = @{
-                    "codex/codex.exe" = "codex.exe"
-                    "codex/codex-command-runner.exe" = "codex-resources\codex-command-runner.exe"
-                    "codex/codex-windows-sandbox-setup.exe" = "codex-resources\codex-windows-sandbox-setup.exe"
-                    "path/rg.exe" = "codex-resources\rg.exe"
+                    "anzoth/anzoth.exe" = "anzoth.exe"
+                    "anzoth/codex-command-runner.exe" = "anzoth-resources\codex-command-runner.exe"
+                    "anzoth/codex-windows-sandbox-setup.exe" = "anzoth-resources\codex-windows-sandbox-setup.exe"
+                    "path/rg.exe" = "anzoth-resources\rg.exe"
                 }
 
                 foreach ($relativeSource in $copyMap.Keys) {
@@ -839,7 +839,7 @@ try {
                 }
 
                 if (-not (Test-LegacyPlatformNpmContentsAreComplete -PackageDir $stagingDir)) {
-                    throw "Downloaded Codex npm archive did not contain the expected legacy platform package layout."
+                    throw "Downloaded Anzoth npm archive did not contain the expected legacy platform package layout."
                 }
             }
 
@@ -917,12 +917,12 @@ if ($prioritizeVisibleBin) {
     }
 }
 
-Write-Step "Current PowerShell session: codex"
-Write-Step "Future PowerShell windows: open a new PowerShell window and run: codex"
-Write-Host "Codex CLI $resolvedVersion installed successfully."
+Write-Step "Current PowerShell session: anzoth"
+Write-Step "Future PowerShell windows: open a new PowerShell window and run: anzoth"
+Write-Host "Anzoth CLI $resolvedVersion installed successfully."
 
-$codexCommand = Join-Path $visibleBinDir "codex.exe"
+$codexCommand = Join-Path $visibleBinDir "anzoth.exe"
 if (Prompt-YesNo "Start Codex now?") {
-    Write-Step "Launching Codex"
+    Write-Step "Launching Anzoth"
     & $codexCommand
 }

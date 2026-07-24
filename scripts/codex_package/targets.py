@@ -48,15 +48,15 @@ class PackageInputs:
 
 
 PACKAGE_VARIANTS: dict[str, PackageVariant] = {
-    "codex": PackageVariant(
-        name="codex",
-        cargo_bin="codex",
-        executable_stem="codex",
+    "anzoth": PackageVariant(
+        name="anzoth",
+        cargo_bin="anzoth",
+        executable_stem="anzoth",
     ),
-    "codex-app-server": PackageVariant(
-        name="codex-app-server",
+    "anzoth-app-server": PackageVariant(
+        name="anzoth-app-server",
         cargo_bin="codex-app-server",
-        executable_stem="codex-app-server",
+        executable_stem="anzoth-app-server",
     ),
 }
 

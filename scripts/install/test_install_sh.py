@@ -23,12 +23,12 @@ class InstallShTest(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "https://api.github.com/repos/openai/codex/releases/tags/"
+                "https://api.github.com/repos/lowenmk/anzoth-cli/releases/tags/"
                 f"rust-v{VERSION}"
             ],
         )
         self.assertIn(
-            f"Could not fetch GitHub release metadata for Codex {VERSION}",
+                f"Could not fetch GitHub release metadata for Anzoth {VERSION}",
             result.stderr,
         )
         self.assertNotIn("Could not find Codex package", result.stderr)
@@ -40,10 +40,10 @@ class InstallShTest(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "https://api.github.com/repos/openai/codex/releases/tags/"
+                "https://api.github.com/repos/lowenmk/anzoth-cli/releases/tags/"
                 f"rust-v{VERSION}",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
+                "https://github.com/lowenmk/anzoth-cli/releases/download/"
+                f"rust-v{VERSION}/anzoth-package_SHA256SUMS",
             ],
         )
         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
@@ -55,9 +55,9 @@ class InstallShTest(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "https://api.github.com/repos/openai/codex/releases/latest",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
+                "https://api.github.com/repos/lowenmk/anzoth-cli/releases/latest",
+                "https://github.com/lowenmk/anzoth-cli/releases/download/"
+                f"rust-v{VERSION}/anzoth-package_SHA256SUMS",
             ],
         )
         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
@@ -71,9 +71,9 @@ class InstallShTest(unittest.TestCase):
         self.assertEqual(
             requests,
             [
-                "https://api.github.com/repos/openai/codex/releases/latest",
-                "https://github.com/openai/codex/releases/download/"
-                f"rust-v{VERSION}/codex-package_SHA256SUMS",
+                "https://api.github.com/repos/lowenmk/anzoth-cli/releases/latest",
+                "https://github.com/lowenmk/anzoth-cli/releases/download/"
+                f"rust-v{VERSION}/anzoth-package_SHA256SUMS",
             ],
         )
         self.assertIn(f"Resolved version: {VERSION}", result.stdout)
@@ -85,8 +85,8 @@ class InstallShTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(requests), 2)
-        self.assertIn("/codex-npm-", requests[1])
-        self.assertNotIn("codex-package_SHA256SUMS", requests[1])
+        self.assertIn("/anzoth-npm-", requests[1])
+        self.assertNotIn("anzoth-package_SHA256SUMS", requests[1])
 
     def test_macos_install_exposes_code_mode_host_beside_codex(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -170,14 +170,14 @@ def run_installer_in(
                 fi
                 printf '%s\n' "$CODEX_TEST_METADATA_JSON"
                 ;;
-              */codex-package_SHA256SUMS)
+              */anzoth-package_SHA256SUMS)
                 if [ -n "$CODEX_TEST_CHECKSUM_PATH" ]; then
                   cp "$CODEX_TEST_CHECKSUM_PATH" "$output"
                 else
                   exit 22
                 fi
                 ;;
-              */codex-package-*.tar.gz)
+              */anzoth-package-*.tar.gz)
                 if [ -n "$CODEX_TEST_ARCHIVE_PATH" ]; then
                   cp "$CODEX_TEST_ARCHIVE_PATH" "$output"
                 else
@@ -245,7 +245,7 @@ def create_package_release(root: Path) -> tuple[Path, Path, str]:
     package_dir = root / "package"
     (package_dir / "bin").mkdir(parents=True)
     (package_dir / "codex-path").mkdir()
-    (package_dir / "codex-package.json").write_text("{}\n", encoding="utf-8")
+    (package_dir / "anzoth-package.json").write_text("{}\n", encoding="utf-8")
     write_executable(
         package_dir / "bin" / "codex",
         f"#!/bin/sh\nprintf 'codex-cli {VERSION}\\n'\n",
@@ -256,14 +256,14 @@ def create_package_release(root: Path) -> tuple[Path, Path, str]:
     )
     write_executable(package_dir / "codex-path" / "rg", "#!/bin/sh\nexit 0\n")
 
-    asset = "codex-package-aarch64-apple-darwin.tar.gz"
+    asset = "anzoth-package-aarch64-apple-darwin.tar.gz"
     archive_path = root / asset
     with tarfile.open(archive_path, "w:gz") as archive:
         for path in package_dir.iterdir():
             archive.add(path, arcname=path.name)
 
     archive_digest = hashlib.sha256(archive_path.read_bytes()).hexdigest()
-    checksum_path = root / "codex-package_SHA256SUMS"
+    checksum_path = root / "anzoth-package_SHA256SUMS"
     checksum_path.write_text(f"{archive_digest}  {asset}\n", encoding="utf-8")
     checksum_digest = hashlib.sha256(checksum_path.read_bytes()).hexdigest()
     metadata_json = json.dumps(
@@ -271,7 +271,7 @@ def create_package_release(root: Path) -> tuple[Path, Path, str]:
             "assets": [
                 {"name": asset, "digest": f"sha256:{archive_digest}"},
                 {
-                    "name": "codex-package_SHA256SUMS",
+                    "name": "anzoth-package_SHA256SUMS",
                     "digest": f"sha256:{checksum_digest}",
                 },
             ],
@@ -290,7 +290,7 @@ def write_executable(path: Path, contents: str) -> None:
 def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
     assets = [
         asset_metadata(
-            f"codex-package-{target}.tar.gz",
+            f"anzoth-package-{target}.tar.gz",
             f"sha256:{'a' * 64}",
             reorder=reorder,
         )
@@ -303,7 +303,7 @@ def release_metadata(*, compact: bool = False, reorder: bool = False) -> str:
     ]
     assets.append(
         asset_metadata(
-            "codex-package_SHA256SUMS",
+            "anzoth-package_SHA256SUMS",
             f"sha256:{'b' * 64}",
             reorder=reorder,
         )
@@ -327,18 +327,18 @@ def legacy_release_metadata_with_decoys() -> str:
     assets = [
         {
             "metadata": {
-                "name": "codex-package-x86_64-unknown-linux-musl.tar.gz",
+                "name": "anzoth-package-x86_64-unknown-linux-musl.tar.gz",
                 "digest": fake_digest,
             },
             "digest": f"sha256:{'c' * 64}",
-            "name": f"codex-npm-{target}-{VERSION}.tgz",
+            "name": f"anzoth-npm-{target}-{VERSION}.tgz",
         }
         for target in ("darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64")
     ]
     return json.dumps(
         {
             "body": (
-                f'fake: {{"name":"codex-package_SHA256SUMS","digest":"{fake_digest}"}}'
+                f'fake: {{"name":"anzoth-package_SHA256SUMS","digest":"{fake_digest}"}}'
             ),
             "assets": assets,
             "tag_name": f"rust-v{VERSION}",

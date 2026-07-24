@@ -313,7 +313,7 @@ jobs:
           set -euo pipefail
           target="${{ matrix.target }}"
           archive_script="${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh"
-          temp_root="${RUNNER_TEMP}/codex-package-archives"
+          temp_root="${RUNNER_TEMP}/anzoth-package-archives"
 
           # The package helper rewrites cached DotSlash executables. Keep the
           # concurrent processes in separate temp roots because Windows cannot
@@ -356,7 +356,7 @@ jobs:
           python "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py" \
             stage-runtime \
             "$stage_dir" \
-            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz" \
+            "dist/${{ matrix.target }}/anzoth-package-${{ matrix.target }}.tar.gz" \
             --codex-version "${GITHUB_REF_NAME}" \
             --platform-tag "$platform_tag"
           "${RUNNER_TEMP}/python-runtime-build-venv/Scripts/python.exe" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
@@ -414,7 +414,7 @@ jobs:
             # directory path inside the zip.
             if [[ "$base" == "codex-${target}.exe" ]]; then
               # Bundle the sandbox helper binaries into the main codex zip so
-              # WinGet installs include the required helpers next to codex.exe.
+              # WinGet installs include the required helpers next to anzoth.exe.
               # Fall back to the single-binary zip if the helpers are missing
               # to avoid breaking releases.
               bundle_dir="$(mktemp -d)"

@@ -6,8 +6,8 @@ RELEASE="${CODEX_RELEASE:-latest}"
 NON_INTERACTIVE="${CODEX_NON_INTERACTIVE:-false}"
 
 BIN_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
-BIN_PATH="$BIN_DIR/codex"
-CODE_MODE_HOST_BIN_PATH="$BIN_DIR/codex-code-mode-host"
+BIN_PATH="$BIN_DIR/anzoth"
+CODE_MODE_HOST_BIN_PATH="$BIN_DIR/anzoth-code-mode-host"
 CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
 STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
 RELEASES_DIR="$STANDALONE_ROOT/releases"
@@ -56,7 +56,7 @@ validate_version() {
   fi
 
   if ! printf '%s\n' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)(\.[0-9]+)?)?$'; then
-    echo "Invalid Codex release version: $version. Expected latest or x.y.z[-alpha[.N]|-beta[.N]]." >&2
+  echo "Invalid Anzoth release version: $version. Expected latest or x.y.z[-alpha[.N]|-beta[.N]]." >&2
     exit 1
   fi
 }
@@ -237,13 +237,13 @@ release_url_for_asset() {
   asset="$1"
   resolved_version="$2"
 
-  printf 'https://github.com/openai/codex/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
+  printf 'https://github.com/lowenmk/anzoth-cli/releases/download/rust-v%s/%s\n' "$resolved_version" "$asset"
 }
 
 release_metadata_url() {
   resolved_version="$1"
 
-  printf 'https://api.github.com/repos/openai/codex/releases/tags/rust-v%s\n' "$resolved_version"
+  printf 'https://api.github.com/repos/lowenmk/anzoth-cli/releases/tags/rust-v%s\n' "$resolved_version"
 }
 
 resolve_release() {
@@ -252,7 +252,7 @@ resolve_release() {
 
   if [ "$normalized_version" = "latest" ]; then
     requested_release="latest"
-    metadata_url="https://api.github.com/repos/openai/codex/releases/latest"
+    metadata_url="https://api.github.com/repos/lowenmk/anzoth-cli/releases/latest"
   else
     resolved_version="$normalized_version"
     requested_release="$resolved_version"
@@ -260,12 +260,12 @@ resolve_release() {
   fi
 
   if ! release_json="$(download_text "$metadata_url")"; then
-    echo "Could not fetch GitHub release metadata for Codex $requested_release. GitHub API may be unavailable or rate limited." >&2
+    echo "Could not fetch GitHub release metadata for Anzoth $requested_release. GitHub API may be unavailable or rate limited." >&2
     exit 1
   fi
 
   if ! release_metadata="$(printf '%s\n' "$release_json" | parse_release_metadata)"; then
-    echo "Could not parse GitHub release metadata for Codex $requested_release." >&2
+    echo "Could not parse GitHub release metadata for Anzoth $requested_release." >&2
     exit 1
   fi
 
@@ -276,7 +276,7 @@ resolve_release() {
       *) resolved_version="" ;;
     esac
     if [ -z "$resolved_version" ]; then
-      echo "Failed to resolve the latest Codex release version." >&2
+      echo "Failed to resolve the latest Anzoth release version." >&2
       exit 1
     fi
     validate_version "$resolved_version"
@@ -339,7 +339,7 @@ package_archive_digest() {
   ' "$manifest_path" 2>/dev/null || true)"
 
   if [ -z "$digest" ]; then
-    echo "Could not find SHA-256 digest for $asset in codex-package_SHA256SUMS." >&2
+    echo "Could not find SHA-256 digest for $asset in anzoth-package_SHA256SUMS." >&2
     exit 1
   fi
 
@@ -364,7 +364,7 @@ file_sha256() {
     return
   fi
 
-  echo "sha256sum, shasum, or openssl is required to verify the Codex download." >&2
+    echo "sha256sum, shasum, or openssl is required to verify the Anzoth download." >&2
   exit 1
 }
 
@@ -374,7 +374,7 @@ verify_archive_digest() {
   actual_digest="$(file_sha256 "$archive_path")"
 
   if [ "$actual_digest" != "$expected_digest" ]; then
-    echo "Downloaded Codex archive checksum did not match expected digest." >&2
+    echo "Downloaded Anzoth archive checksum did not match expected digest." >&2
     echo "expected: $expected_digest" >&2
     echo "actual:   $actual_digest" >&2
     exit 1
@@ -424,8 +424,8 @@ add_to_path() {
 
   profile="$(pick_profile)"
   path_profile="$profile"
-  begin_marker="# >>> Codex installer >>>"
-  end_marker="# <<< Codex installer <<<"
+  begin_marker="# >>> Anzoth installer >>>"
+  end_marker="# <<< Anzoth installer <<<"
   path_line="export PATH=\"$BIN_DIR:\$PATH\""
 
   if [ -f "$profile" ] && grep -F "$begin_marker" "$profile" >/dev/null 2>&1; then
@@ -570,7 +570,7 @@ cleanup_stale_install_artifacts() {
   find "$STANDALONE_ROOT" -mindepth 1 -maxdepth 1 -name '.current.*' -exec rm -f {} +
 
   if [ -d "$BIN_DIR" ]; then
-    find "$BIN_DIR" -mindepth 1 -maxdepth 1 -name '.codex.*' -exec rm -f {} +
+    find "$BIN_DIR" -mindepth 1 -maxdepth 1 -name '.anzoth.*' -exec rm -f {} +
   fi
 }
 
@@ -605,13 +605,13 @@ version_from_binary() {
 }
 
 current_installed_version() {
-  version="$(version_from_binary "$CURRENT_LINK/bin/codex" || true)"
+  version="$(version_from_binary "$CURRENT_LINK/bin/anzoth" || true)"
   if [ -n "$version" ]; then
     printf '%s\n' "$version"
     return 0
   fi
 
-  version="$(version_from_binary "$CURRENT_LINK/codex" || true)"
+  version="$(version_from_binary "$CURRENT_LINK/anzoth" || true)"
   if [ -n "$version" ]; then
     printf '%s\n' "$version"
     return 0
@@ -621,7 +621,7 @@ current_installed_version() {
 }
 
 resolve_existing_codex() {
-  command -v codex 2>/dev/null || true
+  command -v anzoth 2>/dev/null || true
 }
 
 classify_existing_codex() {
@@ -691,8 +691,8 @@ prompt_yes_no() {
 print_launch_instructions() {
   case "$path_action" in
     added)
-      step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && codex"
-      step "Future terminals: open a new terminal and run: codex"
+  step "Current terminal: export PATH=\"$BIN_DIR:\$PATH\" && anzoth"
+  step "Future terminals: open a new terminal and run: anzoth"
       step "PATH was added to $path_profile"
       ;;
     updated)
@@ -706,15 +706,15 @@ print_launch_instructions() {
       step "PATH is already configured in $path_profile"
       ;;
     *)
-      step "Current terminal: codex"
-      step "Future terminals: open a new terminal and run: codex"
+  step "Current terminal: anzoth"
+  step "Future terminals: open a new terminal and run: anzoth"
       ;;
   esac
 }
 
 maybe_launch_codex_now() {
-  if prompt_yes_no "Start Codex now?"; then
-    step "Launching Codex"
+  if prompt_yes_no "Start Anzoth now?"; then
+    step "Launching Anzoth"
     "$BIN_PATH"
   fi
 }
@@ -729,8 +729,8 @@ detect_conflicting_install() {
 
   conflict_manager="$manager"
   conflict_path="$existing_path"
-  step "Detected existing $manager-managed Codex at $existing_path"
-  warn "Multiple managed Codex installs can be ambiguous because PATH order decides which one runs."
+  step "Detected existing $manager-managed Anzoth at $existing_path"
+  warn "Multiple managed Anzoth installs can be ambiguous because PATH order decides which one runs."
 }
 
 handle_conflicting_install() {
@@ -740,23 +740,23 @@ handle_conflicting_install() {
 
   case "$conflict_manager" in
     brew)
-      uninstall_cmd="brew uninstall --cask codex"
+      uninstall_cmd="brew uninstall --cask anzoth"
       ;;
     bun)
-      uninstall_cmd="bun remove -g @openai/codex"
+      uninstall_cmd="bun remove -g @anzoth/cli"
       ;;
     *)
-      uninstall_cmd="npm uninstall -g @openai/codex"
+      uninstall_cmd="npm uninstall -g @anzoth/cli"
       ;;
   esac
 
-  if prompt_yes_no "Uninstall the existing $conflict_manager-managed Codex now?"; then
+  if prompt_yes_no "Uninstall the existing $conflict_manager-managed Anzoth now?"; then
     step "Running: $uninstall_cmd"
     if ! sh -c "$uninstall_cmd"; then
-      warn "Failed to uninstall the existing $conflict_manager-managed Codex. Continuing with the standalone install."
+      warn "Failed to uninstall the existing $conflict_manager-managed Anzoth. Continuing with the standalone install."
     fi
   else
-    warn "Leaving the existing $conflict_manager-managed Codex installed. PATH order will determine which codex runs."
+    warn "Leaving the existing $conflict_manager-managed Anzoth installed. PATH order will determine which anzoth runs."
   fi
 }
 
@@ -770,13 +770,13 @@ install_package_release() {
   mkdir -p "$stage_release"
   tar -xzf "$archive_path" -C "$stage_release"
   chmod 0755 \
-    "$stage_release/bin/codex" \
+    "$stage_release/bin/anzoth" \
     "$stage_release/bin/codex-code-mode-host" \
-    "$stage_release/codex-path/rg"
-  if [ -f "$stage_release/codex-resources/bwrap" ]; then
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+    "$stage_release/anzoth-path/rg"
+  if [ -f "$stage_release/anzoth-resources/bwrap" ]; then
+    chmod 0755 "$stage_release/anzoth-resources/bwrap"
   fi
-  ln -sf "bin/codex" "$stage_release/codex"
+  ln -sf "bin/anzoth" "$stage_release/anzoth"
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
     rm -rf "$release_dir"
@@ -794,15 +794,15 @@ install_legacy_platform_npm_release() {
 
   mkdir -p "$RELEASES_DIR"
   rm -rf "$stage_release" "$extract_dir"
-  mkdir -p "$stage_release/codex-resources" "$extract_dir"
+  mkdir -p "$stage_release/anzoth-resources" "$extract_dir"
   tar -xzf "$archive_path" -C "$extract_dir"
 
-  cp "$vendor_root/codex/codex" "$stage_release/codex"
-  cp "$vendor_root/path/rg" "$stage_release/codex-resources/rg"
-  chmod 0755 "$stage_release/codex" "$stage_release/codex-resources/rg"
-  if [ -f "$vendor_root/codex-resources/bwrap" ]; then
-    cp "$vendor_root/codex-resources/bwrap" "$stage_release/codex-resources/bwrap"
-    chmod 0755 "$stage_release/codex-resources/bwrap"
+  cp "$vendor_root/anzoth/anzoth" "$stage_release/anzoth"
+  cp "$vendor_root/path/rg" "$stage_release/anzoth-resources/rg"
+  chmod 0755 "$stage_release/anzoth" "$stage_release/anzoth-resources/rg"
+  if [ -f "$vendor_root/anzoth-resources/bwrap" ]; then
+    cp "$vendor_root/anzoth-resources/bwrap" "$stage_release/anzoth-resources/bwrap"
+    chmod 0755 "$stage_release/anzoth-resources/bwrap"
   fi
 
   if [ -e "$release_dir" ] || [ -L "$release_dir" ]; then
@@ -823,16 +823,16 @@ release_dir_is_complete() {
 
   case "$layout" in
     package)
-      [ -f "$release_dir/codex-package.json" ] &&
-        [ -x "$release_dir/bin/codex" ] &&
+      [ -f "$release_dir/anzoth-package.json" ] &&
+        [ -x "$release_dir/bin/anzoth" ] &&
         [ -x "$release_dir/bin/codex-code-mode-host" ] &&
-        [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-path/rg" ] ||
+        [ -x "$release_dir/anzoth" ] &&
+        [ -x "$release_dir/anzoth-path/rg" ] ||
         return 1
       ;;
     legacy-platform-npm)
-      [ -x "$release_dir/codex" ] &&
-        [ -x "$release_dir/codex-resources/rg" ] ||
+      [ -x "$release_dir/anzoth" ] &&
+        [ -x "$release_dir/anzoth-resources/rg" ] ||
         return 1
       ;;
     *)
@@ -841,7 +841,7 @@ release_dir_is_complete() {
   esac
 
   case "$layout:$expected_target" in
-    package:*linux* | legacy-platform-npm:*linux*) [ -x "$release_dir/codex-resources/bwrap" ] ;;
+    package:*linux* | legacy-platform-npm:*linux*) [ -x "$release_dir/anzoth-resources/bwrap" ] ;;
     *) true ;;
   esac
 }
@@ -856,17 +856,17 @@ update_current_link() {
 release_codex_relative_path() {
   release_dir="$1"
 
-  if [ -x "$release_dir/bin/codex" ]; then
-    printf 'bin/codex\n'
+  if [ -x "$release_dir/bin/anzoth" ]; then
+    printf 'bin/anzoth\n'
   else
-    printf 'codex\n'
+    printf 'anzoth\n'
   fi
 }
 
 update_visible_command() {
   release_dir="$1"
   mkdir -p "$BIN_DIR"
-  tmp_link="$BIN_DIR/.codex.$$"
+  tmp_link="$BIN_DIR/.anzoth.$$"
   codex_relative_path="$(release_codex_relative_path "$release_dir")"
 
   replace_path_with_symlink "$BIN_PATH" "$CURRENT_LINK/$codex_relative_path" "$tmp_link"
@@ -949,17 +949,17 @@ else
 fi
 
 resolve_release
-package_asset="codex-package-$vendor_target.tar.gz"
-checksum_asset="codex-package_SHA256SUMS"
+package_asset="anzoth-package-$vendor_target.tar.gz"
+checksum_asset="anzoth-package_SHA256SUMS"
 if release_asset_exists "$package_asset" &&
   release_asset_exists "$checksum_asset"; then
   install_layout="package"
   asset="$package_asset"
-elif release_asset_exists "codex-npm-$npm_tag-$resolved_version.tgz"; then
+elif release_asset_exists "anzoth-npm-$npm_tag-$resolved_version.tgz"; then
   install_layout="legacy-platform-npm"
-  asset="codex-npm-$npm_tag-$resolved_version.tgz"
+  asset="anzoth-npm-$npm_tag-$resolved_version.tgz"
 else
-  echo "Could not find Codex package or platform npm release assets for Codex $resolved_version." >&2
+  echo "Could not find Anzoth package or platform npm release assets for Anzoth $resolved_version." >&2
   exit 1
 fi
 download_url="$(release_url_for_asset "$asset" "$resolved_version")"
@@ -969,11 +969,11 @@ release_dir="$RELEASES_DIR/$release_name"
 current_version="$(current_installed_version)"
 
 if [ -n "$current_version" ] && [ "$current_version" != "$resolved_version" ]; then
-  step "Updating Codex CLI from $current_version to $resolved_version"
+  step "Updating Anzoth CLI from $current_version to $resolved_version"
 elif [ -n "$current_version" ]; then
-  step "Updating Codex CLI"
+  step "Updating Anzoth CLI"
 else
-  step "Installing Codex CLI"
+  step "Installing Anzoth CLI"
 fi
 step "Detected platform: $platform_label"
 step "Resolved version: $resolved_version"
@@ -1000,7 +1000,7 @@ if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target"
   archive_path="$tmp_dir/$asset"
   checksum_path="$tmp_dir/$checksum_asset"
 
-  step "Downloading Codex CLI"
+  step "Downloading Anzoth CLI"
   if [ "$install_layout" = "package" ]; then
     checksum_digest="$(release_asset_digest "$checksum_asset")"
     download_file "$checksum_url" "$checksum_path"
@@ -1016,7 +1016,7 @@ if ! release_dir_is_complete "$release_dir" "$resolved_version" "$vendor_target"
   if [ "$install_layout" = "package" ]; then
     install_package_release "$release_dir" "$archive_path"
   else
-    install_legacy_platform_npm_release "$release_dir" "$archive_path" "$vendor_target"
+      install_legacy_platform_npm_release "$release_dir" "$archive_path" "$vendor_target"
   fi
 fi
 update_current_link "$release_dir"
@@ -1042,5 +1042,5 @@ case "$path_action" in
     ;;
 esac
 
-printf 'Codex CLI %s installed successfully.\n' "$resolved_version"
+printf 'Anzoth CLI %s installed successfully.\n' "$resolved_version"
 maybe_launch_codex_now

@@ -99,17 +99,17 @@ fi
 
 case "$bundle" in
   primary)
-    variant="codex"
-    entrypoint="codex"
-    archive_stem="codex-package"
+    variant="anzoth"
+    entrypoint="anzoth"
+    archive_stem="anzoth-package"
     ;;
   app-server)
-    variant="codex-app-server"
-    entrypoint="codex-app-server"
-    archive_stem="codex-app-server-package"
+    variant="anzoth-app-server"
+    entrypoint="anzoth-app-server"
+    archive_stem="anzoth-app-server-package"
     ;;
   *)
-    echo "No Codex package variant for bundle: $bundle" >&2
+    echo "No Anzoth package variant for bundle: $bundle" >&2
     exit 1
     ;;
 esac

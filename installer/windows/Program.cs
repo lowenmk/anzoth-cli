@@ -11,8 +11,8 @@ internal static class Program
 {
     private const string DefaultRepository = "lowenmk/anzoth-cli";
     private const string DefaultInstallRoot = @"%LOCALAPPDATA%\Programs\Anzoth";
-    private const string PackageArchiveName = "codex-package-x86_64-pc-windows-msvc.tar.gz";
-    private const string PackageChecksumName = "codex-package_SHA256SUMS";
+    private const string PackageArchiveName = "anzoth-package-x86_64-pc-windows-msvc.tar.gz";
+    private const string PackageChecksumName = "anzoth-package_SHA256SUMS";
     private const string UserAgent = "AnzothInstaller/1.0";
 
     public static int Main(string[] args)
@@ -63,7 +63,6 @@ internal static class Program
         }
 
         CopyDirectory(sourceRoot, installRoot);
-        EnsureAnzothEntrypoint(binDir);
         UpdateUserPath(binDir);
         VerifyInstalledCommand(Path.Combine(binDir, "anzoth.exe"));
 
@@ -214,12 +213,12 @@ internal static class Program
     {
         string[] requiredFiles =
         {
-            "codex-package.json",
-            Path.Combine("bin", "codex.exe"),
+            "anzoth-package.json",
+            Path.Combine("bin", "anzoth.exe"),
             Path.Combine("bin", "codex-code-mode-host.exe"),
-            Path.Combine("codex-path", "rg.exe"),
-            Path.Combine("codex-resources", "codex-command-runner.exe"),
-            Path.Combine("codex-resources", "codex-windows-sandbox-setup.exe"),
+            Path.Combine("anzoth-path", "rg.exe"),
+            Path.Combine("anzoth-resources", "codex-command-runner.exe"),
+            Path.Combine("anzoth-resources", "codex-windows-sandbox-setup.exe"),
         };
 
         foreach (var requiredFile in requiredFiles)
@@ -250,23 +249,6 @@ internal static class Program
             Directory.CreateDirectory(Path.GetDirectoryName(targetFile)!);
             File.Copy(file, targetFile, overwrite: true);
         }
-    }
-
-    private static void EnsureAnzothEntrypoint(string binDir)
-    {
-        var codexExe = Path.Combine(binDir, "codex.exe");
-        var anzothExe = Path.Combine(binDir, "anzoth.exe");
-        if (File.Exists(anzothExe))
-        {
-            return;
-        }
-
-        if (!File.Exists(codexExe))
-        {
-            throw new FileNotFoundException("Installed package is missing codex.exe", codexExe);
-        }
-
-        File.Copy(codexExe, anzothExe, overwrite: true);
     }
 
     private static void VerifyInstalledCommand(string anzothExe)
@@ -409,7 +391,7 @@ Options:
   --release <version>       Install a specific release tag version, or omit for latest.
   --repo <owner/repo>       Release repository to download from. Defaults to lowenmk/anzoth-cli.
   --package-dir <dir>       Install from an unpacked local package directory.
-  --package-archive <path>  Install from a local codex-package .tar.gz archive.
+  --package-archive <path>  Install from a local anzoth-package .tar.gz archive.
   --install-dir <dir>       Override the install root. Defaults to %LOCALAPPDATA%\Programs\Anzoth.
   --uninstall               Remove the install root and PATH entry.
   --version                 Print the installer version.

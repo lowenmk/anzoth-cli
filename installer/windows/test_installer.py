@@ -44,7 +44,7 @@ def build_package_dir(package_dir: Path) -> None:
         "--target",
         "x86_64-pc-windows-msvc",
         "--variant",
-        "codex",
+        "anzoth",
         "--entrypoint-bin",
         str(entrypoint),
         "--package-dir",

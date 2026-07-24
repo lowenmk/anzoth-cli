@@ -426,7 +426,7 @@ jobs:
             "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py"
             stage-runtime
             "$stage_dir"
-            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz"
+            "dist/${{ matrix.target }}/anzoth-package-${{ matrix.target }}.tar.gz"
             --codex-version "${GITHUB_REF_NAME}"
             --platform-tag "$platform_tag"
           )
@@ -780,7 +780,7 @@ jobs:
             "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py" \
             stage-runtime \
             "$stage_dir" \
-            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz" \
+            "dist/${{ matrix.target }}/anzoth-package-${{ matrix.target }}.tar.gz" \
             --codex-version "${GITHUB_REF_NAME}" \
             --platform-tag "$platform_tag"
           "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
@@ -1036,7 +1036,7 @@ jobs:
 
           case "${{ matrix.bundle }}" in
             primary)
-              package_stem="codex-package"
+              package_stem="anzoth-package"
               package_entrypoint="codex"
               ;;
             app-server)
@@ -1178,10 +1178,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          manifest="dist/codex-package_SHA256SUMS"
+          manifest="dist/anzoth-package_SHA256SUMS"
           tmp_manifest="$(mktemp)"
           find dist -type f \
-            \( -name 'codex-package-*.tar.gz' -o -name 'codex-app-server-package-*.tar.gz' \) \
+            \( -name 'anzoth-package-*.tar.gz' -o -name 'anzoth-app-server-package-*.tar.gz' \) \
             -print |
             sort |
             while IFS= read -r archive; do
@@ -1251,9 +1251,9 @@ jobs:
             --release-version "$RELEASE_VERSION" \
             --workflow-url "$workflow_url" \
             --artifacts-dir "${GITHUB_WORKSPACE}/dist" \
-            --package codex \
-            --package codex-responses-api-proxy \
-            --package codex-sdk
+            --package anzoth \
+            --package anzoth-responses-api-proxy \
+            --package anzoth-sdk
 
       - name: Stage installer scripts
         run: |
@@ -1337,12 +1337,12 @@ jobs:
           tag="$RELEASE_TAG"
           mkdir -p dist/npm
           patterns=(
-            "codex-npm-${version}.tgz"
-            "codex-npm-linux-*-${version}.tgz"
-            "codex-npm-darwin-*-${version}.tgz"
-            "codex-npm-win32-*-${version}.tgz"
-            "codex-responses-api-proxy-npm-${version}.tgz"
-            "codex-sdk-npm-${version}.tgz"
+            "anzoth-npm-${version}.tgz"
+            "anzoth-npm-linux-*-${version}.tgz"
+            "anzoth-npm-darwin-*-${version}.tgz"
+            "anzoth-npm-win32-*-${version}.tgz"
+            "anzoth-responses-api-proxy-npm-${version}.tgz"
+            "anzoth-sdk-npm-${version}.tgz"
           )
           for pattern in "${patterns[@]}"; do
             gh release download "$tag" \
@@ -1363,19 +1363,19 @@ jobs:
             prefix="${NPM_TAG}-"
           fi
 
-          root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
-          sdk_tarball="dist/npm/codex-sdk-npm-${VERSION}.tgz"
-          # Keep this list in sync with CODEX_PLATFORM_PACKAGES in
+          root_tarball="dist/npm/anzoth-npm-${VERSION}.tgz"
+          sdk_tarball="dist/npm/anzoth-sdk-npm-${VERSION}.tgz"
+          # Keep this list in sync with PLATFORM_PACKAGES in
           # codex-cli/scripts/build_npm_package.py. The root wrapper advances
-          # @openai/codex@latest as soon as it publishes, so every platform
+          # @anzoth/cli@latest as soon as it publishes, so every platform
           # package it aliases must already exist in the registry first.
           platform_tarballs=(
-            "dist/npm/codex-npm-linux-x64-${VERSION}.tgz"
-            "dist/npm/codex-npm-linux-arm64-${VERSION}.tgz"
-            "dist/npm/codex-npm-darwin-x64-${VERSION}.tgz"
-            "dist/npm/codex-npm-darwin-arm64-${VERSION}.tgz"
-            "dist/npm/codex-npm-win32-x64-${VERSION}.tgz"
-            "dist/npm/codex-npm-win32-arm64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-linux-x64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-linux-arm64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-darwin-x64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-darwin-arm64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-win32-x64-${VERSION}.tgz"
+            "dist/npm/anzoth-npm-win32-arm64-${VERSION}.tgz"
           )
 
           for required_tarball in "${platform_tarballs[@]}" "${root_tarball}"; do
@@ -1407,7 +1407,7 @@ jobs:
           done
 
           # npm returns HTTP 409 when concurrent publishes update the same
-          # packument. Every platform tarball is a version of @openai/codex,
+          # packument. Every platform tarball is a version of @anzoth/cli,
           # so publish all tarballs serially.
           tarballs=(
             "${platform_tarballs[@]}"
@@ -1424,12 +1424,12 @@ jobs:
             tag=""
 
             case "${filename}" in
-              codex-npm-linux-*-"${VERSION}".tgz|codex-npm-darwin-*-"${VERSION}".tgz|codex-npm-win32-*-"${VERSION}".tgz)
-                platform="${filename#codex-npm-}"
+              anzoth-npm-linux-*-"${VERSION}".tgz|anzoth-npm-darwin-*-"${VERSION}".tgz|anzoth-npm-win32-*-"${VERSION}".tgz)
+                platform="${filename#anzoth-npm-}"
                 platform="${platform%-${VERSION}.tgz}"
                 tag="${prefix}${platform}"
                 ;;
-              codex-npm-"${VERSION}".tgz|codex-responses-api-proxy-npm-"${VERSION}".tgz|codex-sdk-npm-"${VERSION}".tgz)
+              anzoth-npm-"${VERSION}".tgz|anzoth-responses-api-proxy-npm-"${VERSION}".tgz|anzoth-sdk-npm-"${VERSION}".tgz)
                 tag="${NPM_TAG}"
                 ;;
               *)
