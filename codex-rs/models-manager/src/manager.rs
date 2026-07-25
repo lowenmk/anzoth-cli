@@ -555,7 +555,7 @@ impl ModelsManager for StaticModelsManager {
 }
 
 fn load_remote_models_from_file() -> Result<Vec<ModelInfo>, std::io::Error> {
-    Ok(crate::bundled_models_response()?.models)
+    Ok(crate::bundled_anzoth_models_response()?.models)
 }
 
 fn default_model_from_available(available: Vec<ModelPreset>) -> String {

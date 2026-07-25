@@ -15,6 +15,12 @@ pub fn bundled_models_response()
     serde_json::from_str(include_str!("../models.json"))
 }
 
+/// Load the bundled Anzoth runtime catalog shipped with the CLI.
+pub fn bundled_anzoth_models_response()
+-> std::result::Result<codex_protocol::openai_models::ModelsResponse, serde_json::Error> {
+    serde_json::from_str(include_str!("../../models-anzoth.json"))
+}
+
 /// Convert the client version string to a whole version string (e.g. "1.2.3-alpha.4" -> "1.2.3").
 pub fn client_version_to_whole() -> String {
     format!(
@@ -27,10 +33,10 @@ pub fn client_version_to_whole() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::bundled_models_response;
+    use super::bundled_anzoth_models_response;
 
     #[test]
-    fn anzoth_model_catalog_parses_and_defaults_to_coder() {
+    fn anzoth_model_catalog_parses_and_defaults_to_core() {
         let response: codex_protocol::openai_models::ModelsResponse =
             serde_json::from_str(include_str!("../../models-anzoth.json"))
                 .expect("Anzoth model catalog should parse");
@@ -39,10 +45,10 @@ mod tests {
             .iter()
             .map(|model| model.slug.as_str())
             .collect();
-        assert_eq!(slugs, ["Anzoth-Coder", "Anzoth-Core"]);
+        assert_eq!(slugs, ["Anzoth-Core"]);
         assert_eq!(
             response.models.first().map(|model| model.slug.as_str()),
-            Some("Anzoth-Coder")
+            Some("Anzoth-Core")
         );
         assert!(
             response
@@ -75,13 +81,14 @@ mod tests {
             )
         }));
 
-        let bundled = bundled_models_response().expect("bundled catalog should still parse");
+        let bundled = bundled_anzoth_models_response().expect("bundled catalog should still parse");
         assert!(
-            !bundled
+            bundled
                 .models
                 .iter()
-                .any(|model| model.slug.starts_with("Anzoth-")),
-            "the upstream bundled catalog must remain unchanged"
+                .map(|model| model.slug.as_str())
+                .eq(["Anzoth-Core"]),
+            "the bundled catalog must be the Anzoth runtime catalog"
         );
     }
 }

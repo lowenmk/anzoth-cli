@@ -410,6 +410,47 @@ async fn get_model_info_tracks_fallback_usage() {
 }
 
 #[tokio::test]
+async fn bundled_anzoth_catalog_defaults_to_core_and_has_exact_metadata() {
+    let bundled = crate::bundled_anzoth_models_response().expect("bundled catalog should parse");
+    let manager = static_manager_for_tests(bundled);
+    let config = ModelsManagerConfig::default();
+
+    let available = manager
+        .try_list_models()
+        .expect("bundled catalog should be listable");
+    assert_eq!(available.len(), 1);
+    assert_eq!(available[0].model, "Anzoth-Core");
+    assert_eq!(available[0].display_name, "Anzoth-Core");
+    assert!(available[0].is_default);
+
+    let default_model = manager
+        .get_default_model(
+            &None,
+            /*allow_provider_model_fallback*/ false,
+            RefreshStrategy::Offline,
+            DEFAULT_HTTP_CLIENT_FACTORY,
+        )
+        .await;
+    assert_eq!(default_model, "Anzoth-Core");
+
+    let model_info = manager.get_model_info("Anzoth-Core", &config).await;
+    assert_eq!(model_info.slug, "Anzoth-Core");
+    assert_eq!(model_info.display_name, "Anzoth-Core");
+    assert_eq!(
+        model_info.description.as_deref(),
+        Some("General-purpose model for Anzoth CLI.")
+    );
+    assert!(!model_info.used_fallback_model_metadata);
+    assert_eq!(
+        model_info
+            .default_reasoning_level
+            .as_ref()
+            .map(|effort| effort.as_str()),
+        Some("medium")
+    );
+}
+
+#[tokio::test]
 async fn get_model_info_uses_custom_catalog() {
     let config = ModelsManagerConfig::default();
     let mut overlay = remote_model("gpt-overlay", "Overlay", /*priority*/ 0);

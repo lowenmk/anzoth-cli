@@ -1,6 +1,7 @@
 use super::*;
 use assert_matches::assert_matches;
 use codex_config::types::ModelAvailabilityNuxConfig;
+use codex_models_manager::bundled_anzoth_models_response;
 use codex_protocol::openai_models::ModelAvailabilityNux;
 use pretty_assertions::assert_eq;
 use tokio::sync::mpsc::unbounded_channel;
@@ -216,6 +217,28 @@ async fn prepare_startup_tooltip_override_persists_model_availability_nux_count(
         reloaded.model_availability_nux.shown_count,
         HashMap::from([("gpt-5.4".to_string(), 1)])
     );
+}
+
+#[tokio::test]
+async fn bundled_anzoth_catalog_has_no_startup_promotional_tip() {
+    let codex_home = tempdir().expect("temp codex home");
+    let mut config = ConfigBuilder::default()
+        .codex_home(codex_home.path().to_path_buf())
+        .build()
+        .await
+        .expect("config");
+    let mut response =
+        bundled_anzoth_models_response().expect("Anzoth bundled catalog should parse");
+    response.models.sort_by_key(|model| model.priority);
+    let mut presets: Vec<ModelPreset> = response.models.into_iter().map(Into::into).collect();
+    ModelPreset::mark_default_by_picker_visibility(&mut presets);
+
+    let tooltip =
+        prepare_startup_tooltip_override(&mut config, &presets, /*is_first_run*/ false).await;
+
+    assert_eq!(presets.len(), 1);
+    assert_eq!(presets[0].model, "Anzoth-Core");
+    assert_eq!(tooltip, None);
 }
 
 #[tokio::test]
