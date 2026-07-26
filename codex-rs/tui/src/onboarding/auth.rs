@@ -593,21 +593,19 @@ impl AuthModeWidget {
 
     fn render_chatgpt_success_message(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            "\u{2713} Anzoth login complete".fg(Color::Green).into(),
-            "".into(),
-            "  Before you start:".into(),
-            "".into(),
-            "  Decide how much autonomy you want to grant Anzoth".into(),
-            "  For more details see the Anzoth help and security guidance.".dim(),
-            "".into(),
-            "  Anzoth can make mistakes".into(),
-            "  Review the code it writes and commands it runs"
-                .dim()
-                .into(),
-            "".into(),
-            "  Powered by your Anzoth account".into(),
-            "  Uses your configured rate limits and privacy preferences.".dim(),
-            "".into(),
+            Line::from(vec!["\u{2713} Anzoth login complete".fg(Color::Green)]),
+            Line::from(""),
+            Line::from("  Before you start:"),
+            Line::from(""),
+            Line::from("  Decide how much autonomy you want to grant Anzoth"),
+            Line::from("  For more details see the Anzoth help and security guidance.".dim()),
+            Line::from(""),
+            Line::from("  Anzoth can make mistakes"),
+            Line::from("  Review the code it writes and commands it runs".dim()),
+            Line::from(""),
+            Line::from("  Powered by your Anzoth account"),
+            Line::from("  Uses your configured rate limits and privacy preferences.".dim()),
+            Line::from(""),
             Line::from(vec![
                 "  Press ".fg(Color::Cyan),
                 self.confirm_binding().into(),
@@ -621,7 +619,9 @@ impl AuthModeWidget {
     }
 
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
-        let lines = vec!["\u{2713} Anzoth login complete".fg(Color::Green).into()];
+        let lines = vec![Line::from(vec![
+            "\u{2713} Anzoth login complete".fg(Color::Green),
+        ])];
 
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -630,9 +630,9 @@ impl AuthModeWidget {
 
     fn render_api_key_configured(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            "✓ Anzoth API key configured".fg(Color::Green).into(),
-            "".into(),
-            "  Anzoth CLI will use your API key.".into(),
+            Line::from(vec!["✓ Anzoth API key configured".fg(Color::Green)]),
+            Line::from(""),
+            Line::from("  Anzoth CLI will use your API key."),
         ];
 
         Paragraph::new(lines)
