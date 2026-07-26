@@ -12,11 +12,13 @@ if defined ANZOTH_COMPAT_MODE (
             set "ANZOTH_HOME=%USERPROFILE%\.codex"
         )
     )
+    if not defined ANZOTH_API_KEY if defined OPENAI_API_KEY set "ANZOTH_API_KEY=%OPENAI_API_KEY%"
+    if not defined ANZOTH_API_KEY if defined CODEX_API_KEY set "ANZOTH_API_KEY=%CODEX_API_KEY%"
 ) else (
     if not defined ANZOTH_HOME set "ANZOTH_HOME=%USERPROFILE%\.anzoth"
     set "CODEX_HOME=%ANZOTH_HOME%"
-    set "OPENAI_API_KEY="
-    set "CODEX_API_KEY="
+    if not defined ANZOTH_API_KEY if defined OPENAI_API_KEY set "ANZOTH_API_KEY=%OPENAI_API_KEY%"
+    if not defined ANZOTH_API_KEY if defined CODEX_API_KEY set "ANZOTH_API_KEY=%CODEX_API_KEY%"
 )
 
 if not defined ANZOTH_COMPAT_MODE (
@@ -24,7 +26,7 @@ if not defined ANZOTH_COMPAT_MODE (
     if not exist "%ANZOTH_HOME%\config.toml" (
         >"%ANZOTH_HOME%\config.toml" (
             echo model_provider = 'anzoth'
-            echo model = 'Anzoth-Coder'
+            echo model = 'Anzoth-Core'
             echo model_catalog_json = '%MODEL_CATALOG%'
             echo forced_login_method = 'api'
         )

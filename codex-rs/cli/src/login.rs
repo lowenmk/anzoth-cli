@@ -1,10 +1,10 @@
-//! CLI login commands and their direct-user observability surfaces.
+//! Anzoth CLI login commands and their direct-user observability surfaces.
 //!
 //! The TUI path already installs a broader tracing stack with feedback, OpenTelemetry, and other
-//! interactive-session layers. Direct `codex login` intentionally does less: it preserves the
+//! interactive-session layers. Direct Anzoth login intentionally does less: it preserves the
 //! existing stderr/browser UX and adds only a small file-backed tracing layer for login-specific
 //! targets. Keeping that setup local avoids pulling the TUI's session-oriented logging machinery
-//! into a one-shot CLI command while still producing a durable `codex-login.log` artifact that
+//! into a one-shot CLI command while still producing a durable `anzoth-login.log` artifact that
 //! support can request from users.
 
 use codex_config::types::AuthCredentialsStoreMode;
@@ -34,20 +34,18 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-const CHATGPT_LOGIN_DISABLED_MESSAGE: &str =
-    "ChatGPT login is disabled. Use API key login instead.";
-const API_KEY_LOGIN_DISABLED_MESSAGE: &str =
-    "API key login is disabled. Use ChatGPT login instead.";
+const ANZOTH_LOGIN_DISABLED_MESSAGE: &str = "Anzoth login is disabled. Use an API key instead.";
+const API_KEY_LOGIN_DISABLED_MESSAGE: &str = "Anzoth API key login is disabled.";
 const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
-    "Access token login is disabled. Use API key login instead.";
+    "Access token login is disabled. Use an Anzoth API key instead.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
 
-/// Installs a small file-backed tracing layer for direct `codex login` flows.
+/// Installs a small file-backed tracing layer for direct Anzoth login flows.
 ///
 /// This deliberately duplicates a narrow slice of the TUI logging setup instead of reusing it
 /// wholesale. The TUI stack includes session-oriented layers that are valuable for interactive
 /// runs but unnecessary for a one-shot login command. Keeping the direct CLI path local lets this
-/// command produce a durable `codex-login.log` artifact without coupling it to the TUI's broader
+/// command produce a durable `anzoth-login.log` artifact without coupling it to the TUI's broader
 /// telemetry and feedback initialization.
 fn init_login_file_logging(config: &Config) -> Option<WorkerGuard> {
     let log_dir = match codex_core::config::log_dir(config) {
@@ -75,7 +73,7 @@ fn init_login_file_logging(config: &Config) -> Option<WorkerGuard> {
         log_file_opts.mode(0o600);
     }
 
-    let log_path = log_dir.join("codex-login.log");
+    let log_path = log_dir.join("anzoth-login.log");
     let log_file = match log_file_opts.open(&log_path) {
         Ok(log_file) => log_file,
         Err(err) => {
@@ -96,7 +94,7 @@ fn init_login_file_logging(config: &Config) -> Option<WorkerGuard> {
         .with_ansi(false)
         .with_filter(env_filter);
 
-    // Direct `codex login` otherwise relies on ephemeral stderr and browser output.
+    // Direct Anzoth login otherwise relies on ephemeral stderr and browser output.
     // Persist the same login targets to a file so support can inspect auth failures
     // without reproducing them through TUI or app-server.
     if let Err(err) = tracing_subscriber::registry().with(file_layer).try_init() {
@@ -112,7 +110,7 @@ fn init_login_file_logging(config: &Config) -> Option<WorkerGuard> {
 
 fn print_login_server_start(actual_port: u16, auth_url: &str) {
     eprintln!(
-        "Starting local login server on http://localhost:{actual_port}.\nIf your browser did not open, navigate to this URL to authenticate:\n\n{auth_url}\n\nOn a remote or headless machine? Use `codex login --device-auth` instead."
+        "Starting local login server on http://localhost:{actual_port}.\nIf your browser did not open, navigate to this URL to authenticate:\n\n{auth_url}\n\nOn a remote or headless machine? Use `anzoth login --with-api-key` instead."
     );
 }
 
@@ -170,7 +168,7 @@ pub async fn run_login_with_chatgpt(cli_config_overrides: CliConfigOverrides) ->
     tracing::info!("starting browser login flow");
 
     if matches!(config.forced_login_method, Some(ForcedLoginMethod::Api)) {
-        eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
+        eprintln!("{ANZOTH_LOGIN_DISABLED_MESSAGE}");
         std::process::exit(1);
     }
 
@@ -329,7 +327,7 @@ pub async fn run_login_with_device_code(
     let _login_log_guard = init_login_file_logging(&config);
     tracing::info!("starting device code login flow");
     if matches!(config.forced_login_method, Some(ForcedLoginMethod::Api)) {
-        eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
+        eprintln!("{ANZOTH_LOGIN_DISABLED_MESSAGE}");
         std::process::exit(1);
     }
     let auth_route_config = config.auth_route_config();
@@ -365,7 +363,7 @@ pub async fn run_login_with_device_code(
 }
 
 /// Prefers device-code login (with `open_browser = false`) when headless environment is detected, but keeps
-/// `codex login` working in environments where device-code may be disabled/feature-gated.
+/// Keep legacy login entrypoints working in environments where device-code may be disabled/feature-gated.
 /// If `run_device_code_login` returns `ErrorKind::NotFound` ("device-code unsupported"), this
 /// falls back to starting the local browser login server.
 pub async fn run_login_with_device_code_fallback_to_browser(
@@ -377,7 +375,7 @@ pub async fn run_login_with_device_code_fallback_to_browser(
     let _login_log_guard = init_login_file_logging(&config);
     tracing::info!("starting login flow with device code fallback");
     if matches!(config.forced_login_method, Some(ForcedLoginMethod::Api)) {
-        eprintln!("{CHATGPT_LOGIN_DISABLED_MESSAGE}");
+        eprintln!("{ANZOTH_LOGIN_DISABLED_MESSAGE}");
         std::process::exit(1);
     }
     let auth_route_config = config.auth_route_config();
@@ -463,7 +461,7 @@ pub async fn run_login_status(cli_config_overrides: CliConfigOverrides) -> ! {
                 }
             },
             AuthMode::Chatgpt | AuthMode::ChatgptAuthTokens => {
-                eprintln!("Logged in using ChatGPT");
+                eprintln!("Logged in using a legacy login method");
                 std::process::exit(0);
             }
             AuthMode::Headers => {

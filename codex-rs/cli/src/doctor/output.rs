@@ -75,7 +75,7 @@ pub(super) fn render_human_report(report: &DoctorReport, options: HumanOutputOpt
     let _ = writeln!(
         out,
         "{} {}",
-        bold("Codex Doctor", options),
+        bold("Anzoth Doctor", options),
         dim(&header_suffix(report), options)
     );
     out.push('\n');
@@ -455,7 +455,7 @@ fn write_footer(out: &mut String, options: HumanOutputOptions) {
             out,
             "{}",
             dim(
-                "Run codex doctor without --summary for detailed diagnostics.",
+                "Run anzoth doctor without --summary for detailed diagnostics.",
                 options
             )
         );
@@ -608,7 +608,7 @@ fn auth_reachability_note(report: &DoctorReport) -> Option<DoctorNote> {
         return Some(DoctorNote {
             status: DisplayStatus::Warning,
             name: "auth".to_string(),
-            summary: "mixed auth signals: ChatGPT login plus API key env var; HTTP reachability uses API-key mode".to_string(),
+            summary: "mixed auth signals: legacy login plus API key env var; HTTP reachability uses API-key mode".to_string(),
         });
     }
     None
@@ -1195,7 +1195,7 @@ mod tests {
                 "token expired",
             )
             .detail("OPENAI_API_KEY: present")
-            .remediation("Run `codex login`."),
+            .remediation("Run `anzoth login --with-api-key`."),
             DoctorCheck::new(
                 "updates.status",
                 "updates",
@@ -1241,11 +1241,11 @@ mod tests {
         let rendered = render_human_report(&sample_report(), detailed_no_color_unicode_options());
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Anzoth Doctor v0.0.0
 
 Notes
    ⚠ terminal     narrow terminal
-   ✗ auth         token expired - Run `codex login`.
+   ✗ auth         token expired - Run `anzoth login --with-api-key`.
 ─────────────────────────────────────────────────────────────
 
 Environment
@@ -1274,7 +1274,7 @@ Environment
   ✓ state        state paths inspectable
 
 Configuration
-  ✗ auth         token expired — Run `codex login`.
+  ✗ auth         token expired — Run `anzoth login --with-api-key`.
       OPENAI_API_KEY           present
 
 Updates
@@ -1312,11 +1312,11 @@ Background Server
         let rendered = render_human_report(&sample_report(), summary_no_color_unicode_options());
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Anzoth Doctor v0.0.0
 
 Notes
    ⚠ terminal     narrow terminal
-   ✗ auth         token expired - Run `codex login`.
+   ✗ auth         token expired - Run `anzoth login --with-api-key`.
 ─────────────────────────────────────────────────────────────
 
 Environment
@@ -1330,7 +1330,7 @@ Environment
   ✓ state        state paths inspectable
 
 Configuration
-  ✗ auth         token expired — Run `codex login`.
+  ✗ auth         token expired — Run `anzoth login --with-api-key`.
 
 Updates
   ✓ updates      update configuration is locally consistent
@@ -1346,7 +1346,7 @@ Background Server
 {}
 12 ok · 2 notes · 1 warn · 1 fail failed
 
-Run codex doctor without --summary for detailed diagnostics.
+Run anzoth doctor without --summary for detailed diagnostics.
 --all expand truncated lists       --json redacted report
 ",
             "─".repeat(SEPARATOR_WIDTH)
@@ -1420,11 +1420,11 @@ Run codex doctor without --summary for detailed diagnostics.
         );
         let expected = format!(
             "\
-Codex Doctor v0.0.0
+Anzoth Doctor v0.0.0
 
 Notes
    [!!] terminal     narrow terminal
-   [XX] auth         token expired - Run `codex login`.
+   [XX] auth         token expired - Run `anzoth login --with-api-key`.
 -------------------------------------------------------------
 
 Environment
@@ -1438,7 +1438,7 @@ Environment
   [ok] state        state paths inspectable
 
 Configuration
-  [XX] auth         token expired - Run `codex login`.
+  [XX] auth         token expired - Run `anzoth login --with-api-key`.
 
 Updates
   [ok] updates      update configuration is locally consistent
@@ -1454,7 +1454,7 @@ Background Server
 {}
 12 ok | 2 notes | 1 warn | 1 fail failed
 
-Run codex doctor without --summary for detailed diagnostics.
+Run anzoth doctor without --summary for detailed diagnostics.
 --all expand truncated lists       --json redacted report
 ",
             "-".repeat(SEPARATOR_WIDTH)
@@ -1587,7 +1587,7 @@ Run codex doctor without --summary for detailed diagnostics.
         assert!(rendered.contains("⚠ sandbox"));
         assert!(rendered.contains("⚠ mcp"));
         assert!(rendered.contains(
-            "⚠ auth         mixed auth signals: ChatGPT login plus API key env var; HTTP reachability uses API-key mode"
+            "⚠ auth         mixed auth signals: legacy login plus API key env var; HTTP reachability uses API-key mode"
         ));
         assert!(rendered.contains("○ app-server   not running (ephemeral mode)"));
         assert!(rendered.contains("5 ok · 1 idle · 5 notes · 1 warn · 0 fail degraded"));

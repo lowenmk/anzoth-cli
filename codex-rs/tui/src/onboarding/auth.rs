@@ -593,38 +593,20 @@ impl AuthModeWidget {
 
     fn render_chatgpt_success_message(&self, area: Rect, buf: &mut Buffer) {
         let lines = vec![
-            "✓ Signed in with your ChatGPT account"
-                .fg(Color::Green)
-                .into(),
+            "\u{2713} Anzoth login complete".fg(Color::Green).into(),
             "".into(),
             "  Before you start:".into(),
             "".into(),
-            "  Decide how much autonomy you want to grant Codex".into(),
-            Line::from(vec![
-                "  For more details see the ".into(),
-                crate::terminal_hyperlinks::osc8_hyperlink(
-                    "https://developers.openai.com/codex/security",
-                    "Codex docs",
-                )
-                .underlined(),
-            ])
-            .dim(),
+            "  Decide how much autonomy you want to grant Anzoth".into(),
+            "  For more details see the Anzoth help and security guidance.".dim(),
             "".into(),
-            "  Codex can make mistakes".into(),
+            "  Anzoth can make mistakes".into(),
             "  Review the code it writes and commands it runs"
                 .dim()
                 .into(),
             "".into(),
-            "  Powered by your ChatGPT account".into(),
-            Line::from(vec![
-                "  Uses your plan's rate limits and ".into(),
-                crate::terminal_hyperlinks::osc8_hyperlink(
-                    "https://chatgpt.com/#settings",
-                    "training data preferences",
-                )
-                .underlined(),
-            ])
-            .dim(),
+            "  Powered by your Anzoth account".into(),
+            "  Uses your configured rate limits and privacy preferences.".dim(),
             "".into(),
             Line::from(vec![
                 "  Press ".fg(Color::Cyan),
@@ -639,11 +621,7 @@ impl AuthModeWidget {
     }
 
     fn render_chatgpt_success(&self, area: Rect, buf: &mut Buffer) {
-        let lines = vec![
-            "✓ Signed in with your ChatGPT account"
-                .fg(Color::Green)
-                .into(),
-        ];
+        let lines = vec!["\u{2713} Anzoth login complete".fg(Color::Green).into()];
 
         Paragraph::new(lines)
             .wrap(Wrap { trim: false })
@@ -1356,7 +1334,9 @@ mod tests {
             rendered.push('\n');
         }
 
-        assert!(rendered.contains("Sign in with Anzoth to use Anzoth-Ai as part of your paid plan"));
+        assert!(
+            rendered.contains("Sign in with Anzoth to use Anzoth-Ai as part of your paid plan")
+        );
         assert!(rendered.contains("Sign in with Anzoth"));
         assert!(rendered.contains("Anzoth login is disabled"));
         assert!(rendered.contains("Provide your own API key"));

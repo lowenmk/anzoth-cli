@@ -229,7 +229,7 @@ fn install_details(parsed: &[ParsedDetail], options: HumanOutputOptions) -> Vec<
         expected: None,
     });
 
-    let path_entries = numbered_values(parsed, "PATH codex #");
+    let path_entries = numbered_values(parsed, "PATH legacy codex #");
     if !path_entries.is_empty() {
         let total = path_entries.len();
         let shown = if options.show_all {
@@ -238,7 +238,7 @@ fn install_details(parsed: &[ParsedDetail], options: HumanOutputOptions) -> Vec<
             total.min(3)
         };
         out.push(HumanDetail::Row {
-            label: format!("PATH entries ({total})"),
+            label: format!("Legacy Codex PATH entries ({total})"),
             value: path_entries[0].clone(),
             expected: None,
         });
@@ -267,9 +267,9 @@ fn install_details(parsed: &[ParsedDetail], options: HumanOutputOptions) -> Vec<
             "managed by bun",
             "managed by pnpm",
             "managed package root",
-            "PATH codex entries",
+            "Legacy Codex PATH entries",
         ],
-        &["PATH codex #"],
+        &["PATH legacy codex #"],
     );
     out
 }
@@ -400,7 +400,7 @@ fn config_details(parsed: &[ParsedDetail], options: HumanOutputOptions) -> Vec<H
         &mut out,
         parsed,
         &[
-            "CODEX_HOME",
+            "Legacy CODEX_HOME",
             "cwd",
             "model",
             "model provider",
@@ -422,7 +422,7 @@ fn config_details(parsed: &[ParsedDetail], options: HumanOutputOptions) -> Vec<H
 
 fn state_details(parsed: &[ParsedDetail]) -> Vec<HumanDetail> {
     let mut out = Vec::new();
-    push_row_if_present(&mut out, parsed, "CODEX_HOME", "CODEX_HOME");
+    push_row_if_present(&mut out, parsed, "CODEX_HOME", "legacy CODEX_HOME");
     push_row_if_present(&mut out, parsed, "log dir", "log dir");
     push_row_if_present(&mut out, parsed, "sqlite home", "sqlite home");
     push_database_row(&mut out, parsed, "state DB");
@@ -447,7 +447,7 @@ fn state_details(parsed: &[ParsedDetail]) -> Vec<HumanDetail> {
         &mut out,
         parsed,
         &[
-            "CODEX_HOME",
+            "Legacy CODEX_HOME",
             "log dir",
             "sqlite home",
             "state DB",
