@@ -9,6 +9,11 @@ node_modules
 
 # build
 dist/
+/dist/npm/
+/npm/
+/npm-platform/
+/npm-stage-*/
+/npm-native-*/
 bazel-*
 user.bazelrc
 build/
@@ -56,9 +61,6 @@ yarn-error.log*
 .env*
 !.env.example
 .venv/
-
-# package
-*.tgz
 
 # ci
 .vercel/

@@ -585,7 +585,7 @@ fn build_authorize_url(
         .map(|(k, v)| format!("{k}={}", urlencoding::encode(&v)))
         .collect::<Vec<_>>()
         .join("&");
-    format!("{issuer}/oauth/authorize?{qs}")
+    format!("{issuer}/protocol/openid-connect/auth?{qs}")
 }
 
 fn generate_state() -> String {
@@ -799,7 +799,10 @@ pub(crate) async fn exchange_code_for_tokens(
     // The route selected for the issuer is reused for token exchange; the token endpoint path is
     // not resolved separately.
     let client = create_raw_auth_client(issuer.trim_end_matches('/'), auth_route_config)?;
-    let token_endpoint = format!("{}/oauth/token", issuer.trim_end_matches('/'));
+    let token_endpoint = format!(
+        "{}/protocol/openid-connect/token",
+        issuer.trim_end_matches('/')
+    );
     info!(
         issuer = %sanitize_url_for_logging(issuer),
         token_endpoint = %sanitize_url_for_logging(&token_endpoint),
@@ -1147,8 +1150,11 @@ pub(crate) async fn obtain_api_key(
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use url::Url;
 
     use super::TokenEndpointErrorDetail;
+    use super::build_authorize_url;
+    use super::generate_state;
     use super::html_escape;
     use super::is_missing_codex_entitlement_error;
     use super::parse_token_endpoint_error;
@@ -1288,5 +1294,42 @@ mod tests {
         assert!(body.contains("You do not have access to Codex"));
         assert!(body.contains("Contact your workspace administrator"));
         assert!(!body.contains("missing_codex_entitlement"));
+    }
+
+    #[test]
+    fn authorize_url_uses_keycloak_endpoint_and_local_callback() {
+        let redirect_uri = "http://localhost:1455/auth/callback";
+        let auth_url = build_authorize_url(
+            "https://auth.anzoth.com/realms/anzoth",
+            "anzoth-cli",
+            redirect_uri,
+            &crate::pkce::generate_pkce(),
+            &generate_state(),
+            None,
+        );
+
+        let url = Url::parse(&auth_url).expect("authorize URL should parse");
+        assert_eq!(
+            url.as_str()
+                .starts_with("https://auth.anzoth.com/realms/anzoth/protocol/openid-connect/auth?"),
+            true
+        );
+        let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(
+            params.get("client_id").map(String::as_str),
+            Some("anzoth-cli")
+        );
+        assert_eq!(
+            params.get("redirect_uri").map(String::as_str),
+            Some(redirect_uri)
+        );
+        assert_eq!(
+            params.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+        assert_eq!(
+            params.get("scope").map(String::as_str),
+            Some("openid profile email offline_access api.connectors.read api.connectors.invoke")
+        );
     }
 }

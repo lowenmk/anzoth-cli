@@ -39,6 +39,8 @@ const API_KEY_LOGIN_DISABLED_MESSAGE: &str = "Anzoth API key login is disabled."
 const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
     "Access token login is disabled. Use an Anzoth API key instead.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
+const BROWSER_LOGIN_ISSUER: &str = "https://auth.anzoth.com/realms/anzoth";
+const BROWSER_LOGIN_CLIENT_ID: &str = "anzoth-cli";
 
 /// Installs a small file-backed tracing layer for direct Anzoth login flows.
 ///
@@ -114,6 +116,25 @@ fn print_login_server_start(actual_port: u16, auth_url: &str) {
     );
 }
 
+fn browser_login_server_options(
+    codex_home: PathBuf,
+    forced_chatgpt_workspace_id: Option<Vec<String>>,
+    cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
+    auth_keyring_backend_kind: AuthKeyringBackendKind,
+    auth_route_config: Option<AuthRouteConfig>,
+) -> ServerOptions {
+    let mut opts = ServerOptions::new(
+        codex_home,
+        BROWSER_LOGIN_CLIENT_ID.to_string(),
+        forced_chatgpt_workspace_id,
+        cli_auth_credentials_store_mode,
+        auth_keyring_backend_kind,
+        auth_route_config,
+    );
+    opts.issuer = BROWSER_LOGIN_ISSUER.to_string();
+    opts
+}
+
 async fn clear_existing_auth_before_login(
     codex_home: &Path,
     auth_credentials_store_mode: AuthCredentialsStoreMode,
@@ -147,9 +168,8 @@ pub async fn login_with_chatgpt(
     )
     .await;
 
-    let opts = ServerOptions::new(
+    let opts = browser_login_server_options(
         codex_home,
-        CLIENT_ID.to_string(),
         forced_chatgpt_workspace_id,
         cli_auth_credentials_store_mode,
         auth_keyring_backend_kind,
@@ -554,6 +574,9 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 
+    use super::BROWSER_LOGIN_CLIENT_ID;
+    use super::BROWSER_LOGIN_ISSUER;
+    use super::browser_login_server_options;
     use super::clear_existing_auth_before_login;
     use super::safe_format_key;
 
@@ -595,5 +618,19 @@ mod tests {
     fn short_key_returns_stars() {
         let key = "sk-proj-12345";
         assert_eq!(safe_format_key(key), "***");
+    }
+
+    #[test]
+    fn browser_login_defaults_use_anzoth_issuer_and_client_id() {
+        let opts = browser_login_server_options(
+            std::path::PathBuf::from("C:/tmp/anzoth-home"),
+            None,
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+            None,
+        );
+
+        assert_eq!(opts.issuer, BROWSER_LOGIN_ISSUER);
+        assert_eq!(opts.client_id, BROWSER_LOGIN_CLIENT_ID);
     }
 }

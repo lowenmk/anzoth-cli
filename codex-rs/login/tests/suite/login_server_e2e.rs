@@ -37,7 +37,7 @@ fn start_mock_issuer(chatgpt_account_id: &str) -> (SocketAddr, thread::JoinHandl
     let handle = thread::spawn(move || {
         while let Ok(mut req) = server.recv() {
             let url = req.url().to_string();
-            if url.starts_with("/oauth/token") {
+            if url.starts_with("/protocol/openid-connect/token") {
                 // Read body
                 let mut body = String::new();
                 let _ = req.as_reader().read_to_string(&mut body);
@@ -125,7 +125,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
         codex_home: server_home,
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -136,6 +136,24 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
         login_success_page: LoginSuccessPage::Local,
     };
     let server = run_login_server(opts)?;
+    assert!(
+        server.auth_url.starts_with("http://127.0.0.1:"),
+        "mock issuer should still produce a browser auth URL"
+    );
+    assert!(
+        server.auth_url.contains("protocol/openid-connect/auth"),
+        "browser auth URL should use the Keycloak authorization endpoint"
+    );
+    assert!(
+        server.auth_url.contains("client_id=anzoth-cli"),
+        "browser auth URL should use the Anzoth client id"
+    );
+    assert!(
+        server
+            .auth_url
+            .contains("redirect_uri=http%3A%2F%2Flocalhost%3A"),
+        "browser auth URL should preserve the localhost redirect URI"
+    );
     assert!(
         server
             .auth_url
@@ -166,10 +184,7 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
     let auth_path = codex_home.join("auth.json");
     let data = std::fs::read_to_string(&auth_path)?;
     let json: serde_json::Value = serde_json::from_str(&data)?;
-    // The following assert is here because of the old oauth flow that exchanges tokens for an
-    // API key. See obtain_api_key in server.rs for details. Once we remove this old mechanism
-    // from the code, this test should be updated to expect that the API key is no longer present.
-    assert_eq!(json["OPENAI_API_KEY"], "access-123");
+    assert_eq!(json["OPENAI_API_KEY"], serde_json::Value::Null);
     assert_eq!(json["tokens"]["access_token"], "access-123");
     assert_eq!(json["tokens"]["refresh_token"], "refresh-123");
     assert_eq!(json["tokens"]["account_id"], chatgpt_account_id);
@@ -190,7 +205,7 @@ async fn hosted_login_redirects_to_configured_open_app_url() -> Result<()> {
         codex_home: tmp.path().to_path_buf(),
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -243,7 +258,7 @@ async fn creates_missing_codex_home_dir() -> Result<()> {
         codex_home: server_home,
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -286,7 +301,7 @@ async fn login_server_includes_forced_workspaces_as_one_query_param() -> Result<
         codex_home,
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -330,7 +345,7 @@ async fn forced_chatgpt_workspace_id_mismatch_blocks_login() -> Result<()> {
         codex_home: codex_home.clone(),
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -393,7 +408,7 @@ async fn oauth_access_denied_missing_entitlement_blocks_login_with_clear_error()
         codex_home: codex_home.clone(),
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -464,7 +479,7 @@ async fn oauth_access_denied_unknown_reason_uses_generic_error_page() -> Result<
         codex_home: codex_home.clone(),
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: 0,
         open_browser: false,
@@ -614,7 +629,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
         codex_home: first_codex_home,
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer: issuer.clone(),
         port: 0,
         open_browser: false,
@@ -638,7 +653,7 @@ async fn cancels_previous_login_server_when_port_is_in_use() -> Result<()> {
         codex_home: second_codex_home,
         cli_auth_credentials_store_mode: AuthCredentialsStoreMode::File,
         auth_route_config: None,
-        client_id: codex_login::CLIENT_ID.to_string(),
+        client_id: "anzoth-cli".to_string(),
         issuer,
         port: login_port,
         open_browser: false,
