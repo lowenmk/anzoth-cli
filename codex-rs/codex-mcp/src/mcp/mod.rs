@@ -52,6 +52,7 @@ use crate::server::EffectiveMcpServer;
 use crate::tools::ToolInfo;
 
 pub const CODEX_APPS_MCP_SERVER_NAME: &str = "codex_apps";
+pub const ANZOTH_APPS_MCP_SERVER_NAME: &str = "anzoth_apps";
 const DEFAULT_CODEX_APPS_MCP_PRODUCT_SKU: &str = "codex";
 const MCP_TOOL_NAME_PREFIX: &str = "mcp";
 const MCP_TOOL_NAME_DELIMITER: &str = "__";
@@ -241,7 +242,27 @@ impl ToolPluginProvenance {
 }
 
 pub fn host_owned_codex_apps_enabled(config: &McpConfig, auth: Option<&CodexAuth>) -> bool {
-    config.apps_enabled && auth.is_some_and(CodexAuth::uses_codex_backend)
+    config.apps_enabled && auth.is_some_and(CodexAuth::supports_codex_apps)
+}
+
+pub fn host_owned_anzoth_apps_enabled(config: &McpConfig, auth: Option<&CodexAuth>) -> bool {
+    config.apps_enabled && auth.is_some_and(CodexAuth::supports_anzoth_apps)
+}
+
+/// Returns whether the host should retain a shared auth manager for managed MCP.
+///
+/// That shared manager is needed for either hosted apps family so their
+/// transports can continue following the current in-memory auth snapshot.
+#[allow(dead_code)]
+pub fn host_owned_apps_auth_manager_enabled(config: &McpConfig, auth: Option<&CodexAuth>) -> bool {
+    config.apps_enabled && auth.is_some_and(CodexAuth::supports_any_apps)
+}
+
+pub fn is_host_owned_apps_server(server_name: &str) -> bool {
+    matches!(
+        server_name,
+        CODEX_APPS_MCP_SERVER_NAME | ANZOTH_APPS_MCP_SERVER_NAME
+    )
 }
 
 pub fn configured_mcp_servers(config: &McpConfig) -> HashMap<String, McpServerConfig> {
@@ -292,6 +313,9 @@ pub fn effective_mcp_servers_from_configured(
         .collect::<HashMap<_, _>>();
     if !host_owned_codex_apps_enabled(config, auth) {
         servers.remove(CODEX_APPS_MCP_SERVER_NAME);
+    }
+    if !host_owned_anzoth_apps_enabled(config, auth) {
+        servers.remove(ANZOTH_APPS_MCP_SERVER_NAME);
     }
     servers
 }
@@ -516,6 +540,16 @@ pub fn hosted_plugin_runtime_mcp_server_config(
         originator,
         McpServerAuth::ChatGpt,
     )
+}
+
+pub fn anzoth_apps_mcp_server_config() -> McpServerConfig {
+    let url = "https://mcp.anzoth.com/mcp".to_string();
+    let mut config = mcp_server_config_for_url(url.clone(), None, None, McpServerAuth::OAuth);
+    config.oauth = Some(codex_config::McpServerOAuthConfig {
+        client_id: Some("anzoth-cli".to_string()),
+    });
+    config.oauth_resource = Some(url);
+    config
 }
 
 fn mcp_server_config_for_url(

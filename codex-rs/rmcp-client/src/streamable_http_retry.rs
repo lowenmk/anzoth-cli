@@ -39,6 +39,7 @@ impl RmcpClient {
         };
         let mut retry_deadline = timeout.map(|duration| Instant::now() + duration);
         let mut pending_transport = Some(initial_transport);
+        let mut auth_refresh_attempted = false;
 
         for (attempt, retry_delay_ms) in STREAMABLE_HTTP_RETRY_DELAYS_MS
             .iter()
@@ -84,6 +85,32 @@ impl RmcpClient {
             .await
             {
                 Ok(result) => return Ok(result),
+                Err(error)
+                    if !auth_refresh_attempted
+                        && self.managed_auth_refresh.is_some()
+                        && Self::is_auth_required_error(&error) =>
+                {
+                    auth_refresh_attempted = true;
+                    let refresh_started_at = Instant::now();
+                    if let Err(refresh_error) = self
+                        .refresh_managed_auth_once("initialize", self.managed_auth_refresh.clone())
+                        .await
+                    {
+                        return Err(refresh_error);
+                    }
+                    if let Some(deadline) = retry_deadline.as_mut() {
+                        *deadline += refresh_started_at.elapsed();
+                    }
+                    pending_transport = None;
+                    continue;
+                }
+                Err(error) if Self::is_auth_required_error(&error) => {
+                    return Err(
+                        anyhow!(rmcp::transport::auth::AuthError::AuthorizationRequired).context(
+                            "Anzoth managed MCP authentication required during initialize",
+                        ),
+                    );
+                }
                 Err(error) if should_retry && Self::is_retryable_initialize_error(&error) => {
                     let Some(retry_delay_ms) = retry_delay_ms else {
                         return Err(error);
@@ -141,6 +168,41 @@ impl RmcpClient {
                         matches!(error, StreamableHttpError::TransportChannelClosed)
                             || Self::is_retryable_streamable_http_error(error)
                     })
+            }
+            _ => false,
+        }
+    }
+
+    fn is_auth_required_error(error: &anyhow::Error) -> bool {
+        error.chain().any(|source| {
+            source
+                .downcast_ref::<HandshakeError>()
+                .is_some_and(|error| Self::is_auth_required_client_initialize_error(&error.source))
+                || source
+                    .downcast_ref::<rmcp::service::ClientInitializeError>()
+                    .is_some_and(Self::is_auth_required_client_initialize_error)
+        })
+    }
+
+    fn is_auth_required_client_initialize_error(
+        error: &rmcp::service::ClientInitializeError,
+    ) -> bool {
+        match error {
+            rmcp::service::ClientInitializeError::TransportError { error, context }
+                if context.as_ref() == "send initialize request" =>
+            {
+                error
+                    .error
+                    .downcast_ref::<StreamableHttpError<StreamableHttpClientAdapterError>>()
+                    .is_some_and(|error| matches!(error, StreamableHttpError::AuthRequired(_)))
+            }
+            rmcp::service::ClientInitializeError::TransportError { error, context }
+                if context.as_ref() == "send initialized notification" =>
+            {
+                error
+                    .error
+                    .downcast_ref::<StreamableHttpError<StreamableHttpClientAdapterError>>()
+                    .is_some_and(|error| matches!(error, StreamableHttpError::AuthRequired(_)))
             }
             _ => false,
         }

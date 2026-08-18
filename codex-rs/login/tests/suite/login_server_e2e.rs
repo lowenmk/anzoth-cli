@@ -173,9 +173,14 @@ async fn end_to_end_login_flow_persists_auth_json() -> Result<()> {
     let success_url = Url::parse(success_url)?;
     assert_eq!(success_url.host_str(), Some("localhost"));
     assert_eq!(success_url.path(), "/success");
+    assert!(success_url.query().is_none(), "success URL should be clean");
 
     let success_resp = client.get(success_url).send().await?;
     assert!(success_resp.status().is_success());
+    let success_html = success_resp.text().await?;
+    assert!(success_html.contains("Signed in to Anzoth"));
+    assert!(success_html.contains("data:image/png;base64,"));
+    assert!(!success_html.contains("id_token"));
 
     // Wait for server shutdown
     server.block_until_done().await?;
@@ -429,8 +434,8 @@ async fn oauth_access_denied_missing_entitlement_blocks_login_with_clear_error()
     assert!(resp.status().is_success());
     let body = resp.text().await?;
     assert!(
-        body.contains("You do not have access to Codex"),
-        "error body should clearly explain the Codex access denial"
+        body.contains("You do not have access to Anzoth"),
+        "error body should clearly explain the Anzoth access denial"
     );
     assert!(
         body.contains("Contact your workspace administrator"),
@@ -508,7 +513,7 @@ async fn oauth_access_denied_unknown_reason_uses_generic_error_page() -> Result<
         "generic oauth denial should preserve the oauth error details"
     );
     assert!(
-        body.contains("Return to Codex to retry"),
+        body.contains("Return to Anzoth to retry"),
         "generic oauth denial should keep the generic help text"
     );
     assert!(
@@ -520,11 +525,11 @@ async fn oauth_access_denied_unknown_reason_uses_generic_error_page() -> Result<
         "generic oauth denial should include the oauth error description"
     );
     assert!(
-        !body.contains("You do not have access to Codex"),
+        !body.contains("You do not have access to Anzoth"),
         "generic oauth denial should not show the entitlement-specific title"
     );
     assert!(
-        !body.contains("get access to Codex"),
+        !body.contains("get access to Anzoth"),
         "generic oauth denial should not show the entitlement-specific admin guidance"
     );
 

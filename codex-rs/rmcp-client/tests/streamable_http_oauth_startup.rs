@@ -327,6 +327,7 @@ async fn oauth_startup_child() -> anyhow::Result<()> {
         AuthKeyringBackendKind::default(),
         Environment::default_for_tests().get_http_client(),
         /*auth_provider*/ None,
+        /*managed_auth_refresh*/ None,
     )
     .await?;
 
@@ -367,6 +368,7 @@ async fn expired_unrefreshable_startup_child() -> anyhow::Result<()> {
         AuthKeyringBackendKind::default(),
         Environment::default_for_tests().get_http_client(),
         /*auth_provider*/ None,
+        /*managed_auth_refresh*/ None,
     )
     .await?;
 

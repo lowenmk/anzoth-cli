@@ -39,6 +39,7 @@ const API_KEY_LOGIN_DISABLED_MESSAGE: &str = "Anzoth API key login is disabled."
 const ACCESS_TOKEN_LOGIN_DISABLED_MESSAGE: &str =
     "Access token login is disabled. Use an Anzoth API key instead.";
 const LOGIN_SUCCESS_MESSAGE: &str = "Successfully logged in";
+const ANZOTH_LOGIN_ISSUER: &str = "https://auth.anzoth.com/realms/anzoth";
 const BROWSER_LOGIN_ISSUER: &str = "https://auth.anzoth.com/realms/anzoth";
 const BROWSER_LOGIN_CLIENT_ID: &str = "anzoth-cli";
 
@@ -132,6 +133,31 @@ fn browser_login_server_options(
         auth_route_config,
     );
     opts.issuer = BROWSER_LOGIN_ISSUER.to_string();
+    opts
+}
+
+fn device_login_server_options(
+    codex_home: PathBuf,
+    forced_chatgpt_workspace_id: Option<Vec<String>>,
+    cli_auth_credentials_store_mode: AuthCredentialsStoreMode,
+    auth_keyring_backend_kind: AuthKeyringBackendKind,
+    auth_route_config: Option<AuthRouteConfig>,
+    issuer_base_url: Option<String>,
+    client_id: Option<String>,
+) -> ServerOptions {
+    let mut opts = ServerOptions::new(
+        codex_home,
+        client_id.unwrap_or(CLIENT_ID.to_string()),
+        forced_chatgpt_workspace_id,
+        cli_auth_credentials_store_mode,
+        auth_keyring_backend_kind,
+        auth_route_config,
+    );
+    if let Some(iss) = issuer_base_url {
+        opts.issuer = iss;
+    } else {
+        opts.issuer = ANZOTH_LOGIN_ISSUER.to_string();
+    }
     opts
 }
 
@@ -350,26 +376,23 @@ pub async fn run_login_with_device_code(
         eprintln!("{ANZOTH_LOGIN_DISABLED_MESSAGE}");
         std::process::exit(1);
     }
-    let auth_route_config = config.auth_route_config();
     clear_existing_auth_before_login(
         &config.codex_home,
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
-        auth_route_config.as_ref(),
+        config.auth_route_config().as_ref(),
     )
     .await;
     let forced_chatgpt_workspace_id = config.forced_chatgpt_workspace_id.clone();
-    let mut opts = ServerOptions::new(
+    let opts = device_login_server_options(
         config.codex_home.to_path_buf(),
-        client_id.unwrap_or(CLIENT_ID.to_string()),
         forced_chatgpt_workspace_id,
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
-        auth_route_config,
+        config.auth_route_config(),
+        issuer_base_url,
+        client_id,
     );
-    if let Some(iss) = issuer_base_url {
-        opts.issuer = iss;
-    }
     match run_device_code_login(opts).await {
         Ok(()) => {
             eprintln!("{LOGIN_SUCCESS_MESSAGE}");
@@ -398,27 +421,24 @@ pub async fn run_login_with_device_code_fallback_to_browser(
         eprintln!("{ANZOTH_LOGIN_DISABLED_MESSAGE}");
         std::process::exit(1);
     }
-    let auth_route_config = config.auth_route_config();
     clear_existing_auth_before_login(
         &config.codex_home,
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
-        auth_route_config.as_ref(),
+        config.auth_route_config().as_ref(),
     )
     .await;
 
     let forced_chatgpt_workspace_id = config.forced_chatgpt_workspace_id.clone();
-    let mut opts = ServerOptions::new(
+    let mut opts = device_login_server_options(
         config.codex_home.to_path_buf(),
-        client_id.unwrap_or(CLIENT_ID.to_string()),
         forced_chatgpt_workspace_id,
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
-        auth_route_config,
+        config.auth_route_config(),
+        issuer_base_url,
+        client_id,
     );
-    if let Some(iss) = issuer_base_url {
-        opts.issuer = iss;
-    }
     opts.open_browser = false;
 
     match run_device_code_login(opts.clone()).await {
@@ -574,10 +594,12 @@ mod tests {
     use pretty_assertions::assert_eq;
     use tempfile::tempdir;
 
+    use super::ANZOTH_LOGIN_ISSUER;
     use super::BROWSER_LOGIN_CLIENT_ID;
     use super::BROWSER_LOGIN_ISSUER;
     use super::browser_login_server_options;
     use super::clear_existing_auth_before_login;
+    use super::device_login_server_options;
     use super::safe_format_key;
 
     #[tokio::test]
@@ -632,5 +654,21 @@ mod tests {
 
         assert_eq!(opts.issuer, BROWSER_LOGIN_ISSUER);
         assert_eq!(opts.client_id, BROWSER_LOGIN_CLIENT_ID);
+    }
+
+    #[test]
+    fn device_login_defaults_use_anzoth_issuer() {
+        let opts = device_login_server_options(
+            std::path::PathBuf::from("C:/tmp/anzoth-home"),
+            None,
+            AuthCredentialsStoreMode::File,
+            AuthKeyringBackendKind::default(),
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(opts.issuer, ANZOTH_LOGIN_ISSUER);
+        assert_eq!(opts.client_id, super::CLIENT_ID);
     }
 }

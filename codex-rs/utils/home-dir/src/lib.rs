@@ -55,7 +55,10 @@ fn current_home_kind() -> HomeKind {
     }
 }
 
-fn find_home_from_env(home_kind: HomeKind, home_env: Option<&str>) -> std::io::Result<AbsolutePathBuf> {
+fn find_home_from_env(
+    home_kind: HomeKind,
+    home_env: Option<&str>,
+) -> std::io::Result<AbsolutePathBuf> {
     // Honor the relevant home environment variable when it is set to allow
     // users (and tests) to override the default location.
     match home_env {
@@ -111,8 +114,8 @@ fn find_home_from_env(home_kind: HomeKind, home_env: Option<&str>) -> std::io::R
 
 #[cfg(test)]
 mod tests {
-    use super::find_home_from_env;
     use super::HomeKind;
+    use super::find_home_from_env;
     use codex_utils_absolute_path::AbsolutePathBuf;
     use dirs::home_dir;
     use pretty_assertions::assert_eq;
@@ -128,8 +131,8 @@ mod tests {
             .to_str()
             .expect("missing codex home path should be valid utf-8");
 
-        let err = find_home_from_env(HomeKind::Codex, Some(missing_str))
-            .expect_err("missing CODEX_HOME");
+        let err =
+            find_home_from_env(HomeKind::Codex, Some(missing_str)).expect_err("missing CODEX_HOME");
         assert_eq!(err.kind(), ErrorKind::NotFound);
         assert!(
             err.to_string().contains("CODEX_HOME"),
@@ -146,8 +149,7 @@ mod tests {
             .to_str()
             .expect("file codex home path should be valid utf-8");
 
-        let err =
-            find_home_from_env(HomeKind::Codex, Some(file_str)).expect_err("file CODEX_HOME");
+        let err = find_home_from_env(HomeKind::Codex, Some(file_str)).expect_err("file CODEX_HOME");
         assert_eq!(err.kind(), ErrorKind::InvalidInput);
         assert!(
             err.to_string().contains("not a directory"),
@@ -163,7 +165,8 @@ mod tests {
             .to_str()
             .expect("temp codex home path should be valid utf-8");
 
-        let resolved = find_home_from_env(HomeKind::Codex, Some(temp_str)).expect("valid CODEX_HOME");
+        let resolved =
+            find_home_from_env(HomeKind::Codex, Some(temp_str)).expect("valid CODEX_HOME");
         let expected = temp_home
             .path()
             .canonicalize()

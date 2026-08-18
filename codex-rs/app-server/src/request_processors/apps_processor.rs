@@ -70,7 +70,7 @@ impl AppsRequestProcessor {
         let auth = self.auth_manager.auth().await;
         if !config
             .features
-            .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::uses_codex_backend))
+            .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::supports_any_apps))
         {
             let response = AppsListResponse {
                 data: Vec::new(),

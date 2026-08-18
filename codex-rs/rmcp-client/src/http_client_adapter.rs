@@ -162,10 +162,9 @@ impl StreamableHttpClient for StreamableHttpClientAdapter {
                 StreamableHttpClientAdapterError::SessionExpired404,
             ));
         }
-        if response.status == StatusCode::UNAUTHORIZED.as_u16()
-            && let Some(header) =
-                response_header(&response.headers, reqwest::header::WWW_AUTHENTICATE)
-        {
+        if response.status == StatusCode::UNAUTHORIZED.as_u16() {
+            let header = response_header(&response.headers, reqwest::header::WWW_AUTHENTICATE)
+                .unwrap_or_else(|| "Bearer".to_string());
             return Err(StreamableHttpError::AuthRequired(AuthRequiredError::new(
                 header,
             )));

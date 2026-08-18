@@ -13,6 +13,7 @@ use codex_extension_api::ExtensionRegistry;
 use codex_extension_api::McpServerContribution;
 use codex_extension_api::McpServerContributionContext;
 use codex_login::CodexAuth;
+use codex_mcp::ANZOTH_APPS_MCP_SERVER_NAME;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::EffectiveMcpServer;
 use codex_mcp::McpConfig;
@@ -20,6 +21,7 @@ use codex_mcp::McpPluginAttribution;
 use codex_mcp::McpServerRegistration;
 use codex_mcp::McpToolCatalogCache;
 use codex_mcp::ToolInfo;
+use codex_mcp::anzoth_apps_mcp_server_config;
 use codex_mcp::codex_apps_mcp_server_config;
 use codex_mcp::configured_mcp_servers;
 use codex_mcp::effective_mcp_servers;
@@ -27,6 +29,7 @@ use codex_plugin::AppConnectorId;
 use codex_protocol::capabilities::SelectedCapabilityRoot;
 
 const LEGACY_CODEX_APPS_REGISTRATION_ID: &str = "legacy_codex_apps";
+const LEGACY_ANZOTH_APPS_REGISTRATION_ID: &str = "legacy_anzoth_apps";
 
 /// MCP configuration and capability availability derived from the same inputs.
 pub(crate) struct McpRuntimeProjection {
@@ -208,10 +211,19 @@ impl McpManager {
                     originator,
                 ),
             ));
+            catalog.register(McpServerRegistration::from_compatibility(
+                ANZOTH_APPS_MCP_SERVER_NAME.to_string(),
+                LEGACY_ANZOTH_APPS_REGISTRATION_ID,
+                anzoth_apps_mcp_server_config(),
+            ));
         } else {
             catalog.remove_compatibility(
                 CODEX_APPS_MCP_SERVER_NAME.to_string(),
                 LEGACY_CODEX_APPS_REGISTRATION_ID,
+            );
+            catalog.remove_compatibility(
+                ANZOTH_APPS_MCP_SERVER_NAME.to_string(),
+                LEGACY_ANZOTH_APPS_REGISTRATION_ID,
             );
         }
 

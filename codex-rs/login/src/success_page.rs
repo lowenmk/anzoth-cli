@@ -2,9 +2,7 @@ use base64::Engine;
 use serde_json::Value as JsonValue;
 use url::Url;
 
-use crate::server::DEFAULT_ISSUER;
-
-pub const CODEX_OPEN_APP_URL: &str = "https://chatgpt.com/codex/open-app";
+pub const CODEX_OPEN_APP_URL: &str = "https://anzoth.com";
 
 #[derive(Debug, Clone, Default, Eq, PartialEq)]
 pub enum LoginSuccessPage {
@@ -46,15 +44,6 @@ pub(crate) fn compose_success_url(
     login_success_page: &LoginSuccessPage,
 ) -> LoginSuccessRedirect {
     let token_claims = jwt_auth_claims(id_token);
-
-    let org_id = token_claims
-        .get("organization_id")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-    let project_id = token_claims
-        .get("project_id")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
     let completed_onboarding = token_claims
         .get("completed_platform_onboarding")
         .and_then(JsonValue::as_bool)
@@ -73,34 +62,8 @@ pub(crate) fn compose_success_url(
             .append_pair("app_brand", app_brand.as_str());
         return LoginSuccessRedirect::Hosted(success_url.into());
     }
-
-    let access_claims = jwt_auth_claims(access_token);
-    let plan_type = access_claims
-        .get("chatgpt_plan_type")
-        .and_then(|value| value.as_str())
-        .unwrap_or("");
-    let platform_url = if issuer == DEFAULT_ISSUER {
-        "https://platform.openai.com"
-    } else {
-        "https://platform.api.openai.org"
-    };
-    let mut params = vec![
-        ("id_token", id_token.to_string()),
-        ("needs_setup", needs_setup.to_string()),
-        ("org_id", org_id.to_string()),
-        ("project_id", project_id.to_string()),
-        ("plan_type", plan_type.to_string()),
-        ("platform_url", platform_url.to_string()),
-    ];
-    if codex_streamlined_login {
-        params.push(("codex_streamlined_login", "true".to_string()));
-    }
-    let query = params
-        .into_iter()
-        .map(|(key, value)| format!("{key}={}", urlencoding::encode(&value)))
-        .collect::<Vec<_>>()
-        .join("&");
-    LoginSuccessRedirect::Local(format!("http://localhost:{port}/success?{query}"))
+    let _ = (issuer, access_token, codex_streamlined_login);
+    LoginSuccessRedirect::Local(format!("http://localhost:{port}/success"))
 }
 
 pub(crate) fn jwt_auth_claims(jwt: &str) -> serde_json::Map<String, serde_json::Value> {

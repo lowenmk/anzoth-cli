@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use codex_connectors::AppToolPolicyEvaluator;
 use codex_connectors::AppToolPolicyInput;
+use codex_mcp::ANZOTH_APPS_MCP_SERVER_NAME;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::ToolInfo as McpToolInfo;
 use codex_mcp::tool_is_model_visible;
@@ -59,7 +60,9 @@ fn filter_non_codex_apps_mcp_tools_only(mcp_tools: &[McpToolInfo]) -> Vec<McpToo
     mcp_tools
         .iter()
         .filter(|tool| {
-            tool.server_name != CODEX_APPS_MCP_SERVER_NAME && tool_is_model_visible(tool)
+            tool.server_name != CODEX_APPS_MCP_SERVER_NAME
+                && tool.server_name != ANZOTH_APPS_MCP_SERVER_NAME
+                && tool_is_model_visible(tool)
         })
         .cloned()
         .collect()
@@ -79,7 +82,9 @@ fn filter_codex_apps_mcp_tools(
     mcp_tools
         .iter()
         .filter(|tool| {
-            if tool.server_name != CODEX_APPS_MCP_SERVER_NAME {
+            if tool.server_name != CODEX_APPS_MCP_SERVER_NAME
+                && tool.server_name != ANZOTH_APPS_MCP_SERVER_NAME
+            {
                 return false;
             }
             if !tool_is_model_visible(tool) {

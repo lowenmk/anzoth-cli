@@ -54,7 +54,7 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
-pub(super) const DEFAULT_ISSUER: &str = "https://auth.openai.com";
+pub(super) const DEFAULT_ISSUER: &str = "https://auth.anzoth.com/realms/anzoth";
 const DEFAULT_PORT: u16 = 1455;
 // Keep in sync with the Codex CLI Hydra redirect URI allow-list.
 const FALLBACK_PORT: u16 = 1457;
@@ -62,6 +62,8 @@ static LOGIN_ERROR_PAGE_TEMPLATE: LazyLock<Template> = LazyLock::new(|| {
     Template::parse(include_str!("assets/error.html"))
         .unwrap_or_else(|err| panic!("login error page template must parse: {err}"))
 });
+const ANZOTH_HORIZONTAL_LOGO: &[u8] = include_bytes!("assets/anzoth-horizontal.png");
+const ANZOTH_FAVICON: &[u8] = include_bytes!("assets/favicon.png");
 
 /// Options for launching the local login callback server.
 #[derive(Debug, Clone)]
@@ -474,14 +476,7 @@ async fn process_request(
             }
         }
         "/success" => {
-            let use_streamlined_success = parsed_url
-                .query_pairs()
-                .any(|(key, value)| key == "codex_streamlined_login" && value == "true");
-            let body = if use_streamlined_success {
-                include_str!("assets/success.html")
-            } else {
-                include_str!("assets/success_legacy.html")
-            };
+            let body = render_success_page();
             HandledRequest::ResponseAndExit {
                 headers: match Header::from_bytes(
                     &b"Content-Type"[..],
@@ -504,6 +499,25 @@ async fn process_request(
         },
         _ => HandledRequest::Response(Response::from_string("Not Found").with_status_code(404)),
     }
+}
+
+fn render_success_page() -> String {
+    let html = include_str!("assets/success.html");
+    html.replace(
+        "__ANZOTH_LOGO_DATA_URI__",
+        &inline_png_data_uri(ANZOTH_HORIZONTAL_LOGO),
+    )
+    .replace(
+        "__ANZOTH_FAVICON_DATA_URI__",
+        &inline_png_data_uri(ANZOTH_FAVICON),
+    )
+}
+
+fn inline_png_data_uri(bytes: &[u8]) -> String {
+    format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
 }
 
 /// tiny_http filters `Connection` headers out of `Response` objects, so using
@@ -564,8 +578,12 @@ fn build_authorize_url(
         ("redirect_uri".to_string(), redirect_uri.to_string()),
         (
             "scope".to_string(),
-            "openid profile email offline_access api.connectors.read api.connectors.invoke"
-                .to_string(),
+            if is_anzoth_issuer(issuer) {
+                "openid profile email offline_access".to_string()
+            } else {
+                "openid profile email offline_access api.connectors.read api.connectors.invoke"
+                    .to_string()
+            },
         ),
         (
             "code_challenge".to_string(),
@@ -577,6 +595,9 @@ fn build_authorize_url(
         ("state".to_string(), state.to_string()),
         ("originator".to_string(), originator().value),
     ];
+    if is_anzoth_issuer(issuer) {
+        query.push(("prompt".to_string(), "login".to_string()));
+    }
     if let Some(workspace_ids) = forced_chatgpt_workspace_ids {
         query.push(("allowed_workspace_id".to_string(), workspace_ids.join(",")));
     }
@@ -592,6 +613,10 @@ fn generate_state() -> String {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+fn is_anzoth_issuer(issuer: &str) -> bool {
+    issuer.trim_end_matches('/') == "https://auth.anzoth.com/realms/anzoth"
 }
 
 fn send_cancel_request(port: u16) -> io::Result<()> {
@@ -873,18 +898,19 @@ pub(crate) async fn persist_tokens_async(
     // Reuse existing synchronous logic but run it off the async runtime.
     let codex_home = codex_home.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let mut tokens = TokenData {
-            id_token: parse_chatgpt_jwt_claims(&id_token).map_err(io::Error::other)?,
+        let id_token_info = parse_chatgpt_jwt_claims(&id_token).map_err(io::Error::other)?;
+        let account_id = id_token_info.subject.clone().or_else(|| {
+            jwt_auth_claims(&id_token)
+                .get("chatgpt_account_id")
+                .and_then(|v| v.as_str())
+                .map(ToOwned::to_owned)
+        });
+        let tokens = TokenData {
+            id_token: id_token_info,
             access_token,
             refresh_token,
-            account_id: None,
+            account_id,
         };
-        if let Some(acc) = jwt_auth_claims(&id_token)
-            .get("chatgpt_account_id")
-            .and_then(|v| v.as_str())
-        {
-            tokens.account_id = Some(acc.to_string());
-        }
         let auth = AuthDotJson {
             auth_mode: Some(AuthMode::Chatgpt),
             openai_api_key: api_key,
@@ -1066,11 +1092,11 @@ fn render_login_error_page(
     let (title, display_message, display_description, help_text) =
         if is_missing_codex_entitlement_error(code, error_description) {
             (
-                "You do not have access to Codex".to_string(),
-                "This account is not currently authorized to use Codex in this workspace."
+                "You do not have access to Anzoth".to_string(),
+                "This account is not currently authorized to use Anzoth in this workspace."
                     .to_string(),
-                "Contact your workspace administrator to request access to Codex.".to_string(),
-                "Contact your workspace administrator to get access to Codex, then return to Codex and try again."
+                "Contact your workspace administrator to request access to Anzoth.".to_string(),
+                "Contact your workspace administrator to get access to Anzoth, then return to Anzoth and try again."
                     .to_string(),
             )
         } else {
@@ -1078,7 +1104,7 @@ fn render_login_error_page(
                 "Sign-in could not be completed".to_string(),
                 message.to_string(),
                 error_description.unwrap_or(message).to_string(),
-                "Return to Codex to retry, switch accounts, or contact your workspace admin if access is restricted."
+                "Return to Anzoth to retry, switch accounts, or contact your workspace admin if access is restricted."
                     .to_string(),
             )
         };
@@ -1091,6 +1117,14 @@ fn render_login_error_page(
             ("error_help", html_escape(&help_text)),
         ])
         .unwrap_or_else(|err| panic!("login error page template must render: {err}"))
+        .replace(
+            "__ANZOTH_LOGO_DATA_URI__",
+            &inline_png_data_uri(ANZOTH_HORIZONTAL_LOGO),
+        )
+        .replace(
+            "__ANZOTH_FAVICON_DATA_URI__",
+            &inline_png_data_uri(ANZOTH_FAVICON),
+        )
         .into_bytes()
 }
 
@@ -1274,6 +1308,12 @@ mod tests {
         assert!(body.contains("&lt;bad&gt;"));
         assert!(body.contains("code&amp;value"));
         assert!(body.contains("&quot;quoted&quot;"));
+        assert!(body.contains("Anzoth"));
+        assert!(body.contains("data:image/png;base64,"));
+        assert!(body.contains(r#"window.history.replaceState(null, "", "/error");"#));
+        assert!(!body.contains("Codex"));
+        assert!(!body.contains("OpenAI"));
+        assert!(!body.contains("terminal"));
     }
 
     #[test]
@@ -1291,7 +1331,7 @@ mod tests {
         ))
         .expect("login error page should be utf-8");
 
-        assert!(body.contains("You do not have access to Codex"));
+        assert!(body.contains("You do not have access to Anzoth"));
         assert!(body.contains("Contact your workspace administrator"));
         assert!(!body.contains("missing_codex_entitlement"));
     }
@@ -1329,7 +1369,58 @@ mod tests {
         );
         assert_eq!(
             params.get("scope").map(String::as_str),
+            Some("openid profile email offline_access")
+        );
+        assert_eq!(params.get("prompt").map(String::as_str), Some("login"));
+    }
+
+    #[test]
+    fn authorize_url_adds_prompt_login_for_anzoth_issuer() {
+        let redirect_uri = "http://localhost:1455/auth/callback";
+        let auth_url = build_authorize_url(
+            "https://auth.anzoth.com/realms/anzoth",
+            "anzoth-cli",
+            redirect_uri,
+            &crate::pkce::generate_pkce(),
+            &generate_state(),
+            None,
+        );
+
+        let url = Url::parse(&auth_url).expect("authorize URL should parse");
+        let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(
+            params.get("client_id").map(String::as_str),
+            Some("anzoth-cli")
+        );
+        assert_eq!(params.get("prompt").map(String::as_str), Some("login"));
+    }
+
+    #[test]
+    fn authorize_url_keeps_openai_connector_scopes_for_non_anzoth_issuers() {
+        let redirect_uri = "http://localhost:1455/auth/callback";
+        let auth_url = build_authorize_url(
+            "https://auth.openai.com",
+            "codex-cli",
+            redirect_uri,
+            &crate::pkce::generate_pkce(),
+            &generate_state(),
+            None,
+        );
+
+        let url = Url::parse(&auth_url).expect("authorize URL should parse");
+        let params: std::collections::HashMap<_, _> = url.query_pairs().into_owned().collect();
+        assert_eq!(
+            params.get("scope").map(String::as_str),
             Some("openid profile email offline_access api.connectors.read api.connectors.invoke")
         );
+        assert_eq!(
+            params.get("client_id").map(String::as_str),
+            Some("codex-cli")
+        );
+        assert_eq!(
+            params.get("redirect_uri").map(String::as_str),
+            Some(redirect_uri)
+        );
+        assert_eq!(params.get("prompt"), None);
     }
 }

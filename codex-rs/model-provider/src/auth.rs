@@ -501,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn anzoth_provider_prefers_env_over_stored_auth() {
+    fn anzoth_provider_ignores_legacy_env_key_and_uses_stored_auth() {
         let _lock = env_test_lock();
         let _env_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz_env_key");
         let provider = ModelProviderInfo::create_anzoth_provider(None);
@@ -512,7 +512,7 @@ mod tests {
 
         assert_eq!(
             resolved.to_auth_headers().get(AUTHORIZATION),
-            Some(&http::HeaderValue::from_static("Bearer anz_env_key"))
+            Some(&http::HeaderValue::from_static("Bearer anz_stored_key"))
         );
     }
 

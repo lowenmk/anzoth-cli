@@ -374,11 +374,8 @@ impl ModelProviderInfo {
         ModelProviderInfo {
             name: "Anzoth".into(),
             base_url: Some(base_url.unwrap_or_else(|| ANZOTH_DEFAULT_BASE_URL.to_string())),
-            env_key: Some("ANZOTH_API_KEY".into()),
-            env_key_instructions: Some(
-                "Set ANZOTH_API_KEY to your Anzoth API key (keys typically start with `anz_`)."
-                    .into(),
-            ),
+            env_key: None,
+            env_key_instructions: None,
             experimental_bearer_token: None,
             auth: None,
             aws: None,
@@ -394,7 +391,7 @@ impl ModelProviderInfo {
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
-            requires_openai_auth: false,
+            requires_openai_auth: true,
             supports_websockets: false,
         }
     }

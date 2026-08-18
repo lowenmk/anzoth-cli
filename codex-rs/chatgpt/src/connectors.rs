@@ -30,7 +30,7 @@ async fn apps_enabled(config: &Config) -> bool {
     let auth = auth_manager.auth().await;
     config
         .features
-        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::uses_codex_backend))
+        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::supports_any_apps))
 }
 
 async fn connector_auth(config: &Config) -> anyhow::Result<CodexAuth> {
@@ -39,10 +39,10 @@ async fn connector_auth(config: &Config) -> anyhow::Result<CodexAuth> {
     let auth = auth_manager
         .auth()
         .await
-        .ok_or_else(|| anyhow::anyhow!("ChatGPT auth not available"))?;
+        .ok_or_else(|| anyhow::anyhow!("Apps auth not available"))?;
     anyhow::ensure!(
-        auth.uses_codex_backend(),
-        "ChatGPT connectors require Codex backend auth"
+        auth.supports_any_apps(),
+        "Apps connectors require app-capable auth"
     );
     Ok(auth)
 }

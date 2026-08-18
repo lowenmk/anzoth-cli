@@ -17,8 +17,10 @@ use crate::codex_apps::prepare_openai_file_params_for_model;
 use crate::elicitation::ElicitationRequestManager;
 use crate::elicitation::ElicitationRequestRouter;
 use crate::elicitation::ElicitationReviewerHandle;
+use crate::mcp::ANZOTH_APPS_MCP_SERVER_NAME;
 use crate::mcp::CODEX_APPS_MCP_SERVER_NAME;
 use crate::mcp::ToolPluginProvenance;
+use crate::mcp::is_host_owned_apps_server;
 use crate::rmcp_client::AsyncManagedClient;
 use crate::rmcp_client::CODEX_APPS_REFRESH_DURATION_METRIC;
 use crate::rmcp_client::DEFAULT_STARTUP_TIMEOUT;
@@ -35,6 +37,7 @@ use crate::tools::ToolInfo;
 use crate::tools::filter_tools;
 use crate::tools::normalize_tools_for_model_with_prefix;
 use anyhow::Context;
+use anyhow::Error as AnyhowError;
 use anyhow::Result;
 use anyhow::anyhow;
 use async_channel::Sender;
@@ -65,6 +68,7 @@ use codex_rmcp_client::ElicitationResponse;
 use codex_rmcp_client::McpAuthState;
 use codex_rmcp_client::McpLoginRequirement;
 use codex_rmcp_client::determine_streamable_http_auth_status_from_credentials;
+use futures::FutureExt;
 use rmcp::model::ElicitationCapability;
 use rmcp::model::ListResourceTemplatesResult;
 use rmcp::model::ListResourcesResult;
@@ -168,13 +172,29 @@ impl McpConnectionManager {
         let tool_plugin_provenance = Arc::new(tool_plugin_provenance);
         let startup_submit_id = submit_id.clone();
         let static_chatgpt_auth_provider = auth
-            .filter(|auth| auth.uses_codex_backend())
+            .filter(|auth| auth.supports_codex_apps())
             .map(codex_model_provider::auth_provider_from_auth);
-        let codex_apps_auth_provider = codex_apps_auth_manager.and_then(|auth_manager| {
-            auth.filter(|auth| auth.uses_codex_backend()).map(|auth| {
-                codex_model_provider::auth_provider_from_auth_manager(auth_manager, auth)
+        let codex_apps_auth_provider = codex_apps_auth_manager.as_ref().and_then(|auth_manager| {
+            auth.filter(|auth| auth.supports_codex_apps()).map(|auth| {
+                codex_model_provider::auth_provider_from_auth_manager(
+                    Arc::clone(auth_manager),
+                    auth,
+                )
             })
         });
+        let anzoth_apps_auth_provider = codex_apps_auth_manager.as_ref().and_then(|auth_manager| {
+            auth.filter(|auth| auth.supports_anzoth_apps()).map(|auth| {
+                codex_model_provider::auth_provider_from_auth_manager(
+                    Arc::clone(auth_manager),
+                    auth,
+                )
+            })
+        });
+        let anzoth_apps_auth_refresh = runtime_auth_refresh_for_server(
+            ANZOTH_APPS_MCP_SERVER_NAME,
+            codex_apps_auth_manager.as_ref(),
+            auth.is_some_and(CodexAuth::supports_anzoth_apps),
+        );
         let mcp_servers = mcp_servers.clone();
         for (server_name, server) in mcp_servers
             .into_iter()
@@ -219,8 +239,12 @@ impl McpConnectionManager {
             // AuthManager across refreshes. In the hosted-plugin path, this
             // is the ChatGPT /ps/mcp connection. User-configured MCP
             // registrations keep their existing configured auth path.
-            let chatgpt_auth_provider = if server_name == CODEX_APPS_MCP_SERVER_NAME {
+            let auth_provider = if server_name == CODEX_APPS_MCP_SERVER_NAME {
                 codex_apps_auth_provider
+                    .clone()
+                    .or_else(|| static_chatgpt_auth_provider.clone())
+            } else if server_name == ANZOTH_APPS_MCP_SERVER_NAME {
+                anzoth_apps_auth_provider
                     .clone()
                     .or_else(|| static_chatgpt_auth_provider.clone())
             } else {
@@ -232,8 +256,13 @@ impl McpConnectionManager {
                 if server_name == CODEX_APPS_MCP_SERVER_NAME && uses_env_bearer_token {
                     None
                 } else {
-                    chatgpt_auth_provider_for_server(&server, chatgpt_auth_provider)
+                    auth_provider_for_server(&server, auth_provider)
                 };
+            let runtime_auth_refresh = if server_name == ANZOTH_APPS_MCP_SERVER_NAME {
+                anzoth_apps_auth_refresh.clone()
+            } else {
+                None
+            };
             let tool_catalog_cache_context = if server_name == CODEX_APPS_MCP_SERVER_NAME {
                 None
             } else if let Some(config) = configured_config.as_ref()
@@ -266,6 +295,7 @@ impl McpConnectionManager {
                 runtime_context.clone(),
                 resolved_environment,
                 runtime_auth_provider,
+                runtime_auth_refresh,
                 client_elicitation_capability.clone(),
                 supports_openai_form_elicitation,
             );
@@ -516,6 +546,10 @@ impl McpConnectionManager {
         server_name == CODEX_APPS_MCP_SERVER_NAME && self.server_metadata.contains_key(server_name)
     }
 
+    pub fn is_host_owned_apps_server(&self, server_name: &str) -> bool {
+        is_host_owned_apps_server(server_name) && self.server_metadata.contains_key(server_name)
+    }
+
     pub fn set_approval_policy(&self, approval_policy: &Constrained<AskForApproval>) {
         if let Ok(mut policy) = self.elicitation_requests.approval_policy.lock() {
             *policy = approval_policy.value();
@@ -627,11 +661,28 @@ impl McpConnectionManager {
     /// cache is enabled and the latest filtered tools are returned directly to
     /// the caller. On failure, existing shared cache contents remain unchanged.
     pub async fn hard_refresh_codex_apps_tools_cache(&self) -> Result<Vec<ToolInfo>> {
+        self.hard_refresh_tools_cache(CODEX_APPS_MCP_SERVER_NAME)
+            .await
+    }
+
+    pub async fn hard_refresh_anzoth_apps_tools_cache(&self) -> Result<Vec<ToolInfo>> {
+        self.hard_refresh_tools_cache(ANZOTH_APPS_MCP_SERVER_NAME)
+            .await
+    }
+
+    pub async fn hard_refresh_managed_apps_tools_cache(
+        &self,
+        server_name: &str,
+    ) -> Result<Vec<ToolInfo>> {
+        self.hard_refresh_tools_cache(server_name).await
+    }
+
+    async fn hard_refresh_tools_cache(&self, server_name: &str) -> Result<Vec<ToolInfo>> {
         let refresh_start = Instant::now();
         let managed_client = self
             .clients
-            .get(CODEX_APPS_MCP_SERVER_NAME)
-            .ok_or_else(|| anyhow!("unknown MCP server '{CODEX_APPS_MCP_SERVER_NAME}'"))?
+            .get(server_name)
+            .ok_or_else(|| anyhow!("unknown MCP server '{server_name}'"))?
             .client()
             .await
             .context("failed to get client")?;
@@ -645,7 +696,7 @@ impl McpConnectionManager {
                     cache_context.begin_fetch(ConnectorRuntimeFetchSource::HardRefresh)
                 });
         let tools = list_tools_for_client_uncached(
-            CODEX_APPS_MCP_SERVER_NAME,
+            server_name,
             /*is_codex_apps_mcp_server*/ true,
             /*codex_apps_refresh_trigger*/ "explicit",
             &managed_client.client,
@@ -653,9 +704,7 @@ impl McpConnectionManager {
             managed_client.server_instructions.as_deref(),
         )
         .await
-        .with_context(|| {
-            format!("failed to refresh tools for MCP server '{CODEX_APPS_MCP_SERVER_NAME}'")
-        })?;
+        .with_context(|| format!("failed to refresh tools for MCP server '{server_name}'"))?;
 
         let tools =
             match (
@@ -1003,17 +1052,44 @@ impl Drop for McpConnectionManager {
 
 /// Makes ChatGPT authentication available to servers that explicitly opt in.
 /// The HTTP transport applies it only when no configured authorization resolves.
-fn chatgpt_auth_provider_for_server(
+fn auth_provider_for_server(
     server: &EffectiveMcpServer,
-    chatgpt_auth_provider: Option<SharedAuthProvider>,
+    auth_provider: Option<SharedAuthProvider>,
 ) -> Option<SharedAuthProvider> {
-    if !server
+    if server
         .configured_config()
         .is_some_and(|config| matches!(&config.auth, McpServerAuth::ChatGpt))
     {
+        return auth_provider;
+    }
+    if server
+        .configured_config()
+        .is_some_and(|config| matches!(&config.auth, McpServerAuth::OAuth))
+    {
+        return auth_provider;
+    }
+    None
+}
+
+fn runtime_auth_refresh_for_server(
+    server_name: &str,
+    auth_manager: Option<&Arc<AuthManager>>,
+    supports_anzoth_apps: bool,
+) -> Option<codex_rmcp_client::ManagedAuthRefresh> {
+    if server_name != ANZOTH_APPS_MCP_SERVER_NAME || !supports_anzoth_apps {
         return None;
     }
-    chatgpt_auth_provider
+    let auth_manager = Arc::clone(auth_manager?);
+    Some(Arc::new(move || {
+        let auth_manager = Arc::clone(&auth_manager);
+        async move {
+            auth_manager
+                .refresh_token_from_authority()
+                .await
+                .map_err(AnyhowError::from)
+        }
+        .boxed()
+    }))
 }
 
 fn should_share_codex_apps_tools_cache(server_name: &str, uses_env_bearer_token: bool) -> bool {

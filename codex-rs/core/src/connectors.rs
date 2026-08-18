@@ -20,7 +20,6 @@ use codex_protocol::models::PermissionProfile;
 use codex_tools::DiscoverableTool;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
-use tracing::warn;
 
 use crate::config::Config;
 use crate::mcp::McpManager;
@@ -32,6 +31,7 @@ use codex_core_plugins::PluginsManager;
 use codex_features::Feature;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_mcp::ANZOTH_APPS_MCP_SERVER_NAME;
 use codex_mcp::CODEX_APPS_MCP_SERVER_NAME;
 use codex_mcp::MCP_TOOL_CODEX_APPS_META_KEY;
 use codex_mcp::McpConnectionManager;
@@ -122,7 +122,7 @@ pub async fn list_cached_accessible_connectors_from_mcp_tools(
     let auth = auth_manager.auth().await;
     if !config
         .features
-        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::uses_codex_backend))
+        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::supports_any_apps))
     {
         return Some(Vec::new());
     }
@@ -204,7 +204,7 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
     let auth = auth_manager.auth().await;
     if !config
         .features
-        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::uses_codex_backend))
+        .apps_enabled_for_auth(auth.as_ref().is_some_and(CodexAuth::supports_any_apps))
     {
         return Ok(AccessibleConnectorsStatus {
             connectors: Vec::new(),
@@ -224,7 +224,9 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
     }
 
     let mut mcp_servers = effective_mcp_servers(&mcp_config, auth.as_ref());
-    mcp_servers.retain(|name, _| name == CODEX_APPS_MCP_SERVER_NAME);
+    mcp_servers.retain(|name, _| {
+        name == CODEX_APPS_MCP_SERVER_NAME || name == ANZOTH_APPS_MCP_SERVER_NAME
+    });
     if mcp_servers.is_empty() {
         return Ok(AccessibleConnectorsStatus {
             connectors: Vec::new(),
@@ -240,8 +242,9 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
 
     let cancel_token = CancellationToken::new();
     let codex_apps_auth_manager =
-        codex_mcp::host_owned_codex_apps_enabled(&mcp_config, auth.as_ref())
-            .then(|| Arc::clone(&auth_manager));
+        (codex_mcp::host_owned_codex_apps_enabled(&mcp_config, auth.as_ref())
+            || codex_mcp::host_owned_anzoth_apps_enabled(&mcp_config, auth.as_ref()))
+        .then(|| Arc::clone(&auth_manager));
     let mcp_connection_manager = McpConnectionManager::new(
         &mcp_servers,
         config.mcp_oauth_credentials_store_mode,
@@ -270,19 +273,12 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
     )
     .await;
 
+    let managed_apps_server_name = mcp_servers
+        .keys()
+        .find(|name| *name == CODEX_APPS_MCP_SERVER_NAME || *name == ANZOTH_APPS_MCP_SERVER_NAME)
+        .cloned();
     let refreshed_tools = if force_refetch {
-        match mcp_connection_manager
-            .hard_refresh_codex_apps_tools_cache()
-            .await
-        {
-            Ok(tools) => Some(tools),
-            Err(err) => {
-                warn!(
-                    "failed to force-refresh tools for MCP server '{CODEX_APPS_MCP_SERVER_NAME}', using cached/startup tools: {err:#}"
-                );
-                None
-            }
-        }
+        Some(mcp_connection_manager.list_all_tools().await)
     } else {
         None
     };
@@ -296,9 +292,12 @@ pub async fn list_accessible_connectors_from_mcp_tools_with_mcp_manager(
     let mut should_reload_tools = false;
     let codex_apps_ready = if refreshed_tools_succeeded {
         true
-    } else if let Some(cfg) = mcp_servers.get(CODEX_APPS_MCP_SERVER_NAME) {
+    } else if let Some(server_name) = managed_apps_server_name.as_deref() {
+        let cfg = mcp_servers
+            .get(server_name)
+            .expect("server name should exist");
         let immediate_ready = mcp_connection_manager
-            .wait_for_server_ready(CODEX_APPS_MCP_SERVER_NAME, Duration::ZERO)
+            .wait_for_server_ready(server_name, Duration::ZERO)
             .await;
         if immediate_ready {
             true
@@ -432,7 +431,7 @@ async fn cached_directory_connectors_for_tool_suggest_with_auth(
         loaded_auth = auth_manager.auth().await;
         loaded_auth.as_ref()
     };
-    let Some(auth) = auth.filter(|auth| auth.uses_codex_backend()) else {
+    let Some(auth) = auth.filter(|auth| auth.supports_any_apps()) else {
         return Vec::new();
     };
 

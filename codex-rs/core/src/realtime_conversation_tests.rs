@@ -265,14 +265,26 @@ impl Drop for EnvVarGuard {
 
 #[test]
 #[serial(realtime_api_key_env)]
-fn realtime_api_key_prefers_env_over_stored_auth() {
+fn realtime_api_key_ignores_legacy_env_key_and_uses_stored_auth() {
     let _env_guard = EnvVarGuard::set(ANZOTH_API_KEY_ENV_VAR, "anz_env_key");
     let provider = ModelProviderInfo::create_anzoth_provider(None);
     let auth = codex_login::CodexAuth::from_api_key("anz_stored_key");
 
     let api_key = super::realtime_api_key(Some(&auth), &provider).expect("api key");
 
-    assert_eq!(api_key, "anz_env_key");
+    assert_eq!(api_key, "anz_stored_key");
+}
+
+#[test]
+#[serial(realtime_api_key_env)]
+fn realtime_api_key_uses_chatgpt_access_token() {
+    let _env_guard = EnvVarGuard::remove(ANZOTH_API_KEY_ENV_VAR);
+    let provider = ModelProviderInfo::create_anzoth_provider(None);
+    let auth = codex_login::CodexAuth::create_dummy_chatgpt_auth_for_testing();
+
+    let api_key = super::realtime_api_key(Some(&auth), &provider).expect("api key");
+
+    assert_eq!(api_key, "Access Token");
 }
 
 #[test]

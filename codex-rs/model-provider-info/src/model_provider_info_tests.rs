@@ -338,9 +338,9 @@ fn test_built_in_model_providers_include_anzoth() {
         .expect("Anzoth provider should be built in");
     assert_eq!(provider.name, "Anzoth");
     assert_eq!(provider.base_url.as_deref(), Some(ANZOTH_DEFAULT_BASE_URL));
-    assert_eq!(provider.env_key.as_deref(), Some("ANZOTH_API_KEY"));
+    assert_eq!(provider.env_key.as_deref(), None);
     assert_eq!(provider.wire_api, WireApi::Responses);
-    assert!(!provider.requires_openai_auth);
+    assert!(provider.requires_openai_auth);
 }
 
 #[test]

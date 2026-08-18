@@ -309,6 +309,9 @@ pub type SendElicitation = Box<
     dyn Fn(RequestId, Elicitation) -> BoxFuture<'static, Result<ElicitationResponse>> + Send + Sync,
 >;
 
+pub type ManagedAuthRefresh =
+    Arc<dyn Fn() -> BoxFuture<'static, Result<(), anyhow::Error>> + Send + Sync>;
+
 pub struct ToolWithConnectorId {
     pub tool: Tool,
     pub connector_id: Option<String>,
@@ -327,6 +330,7 @@ pub struct RmcpClient {
     state: Mutex<ClientState>,
     stdio_process: Option<StdioServerProcessHandle>,
     transport_recipe: TransportRecipe,
+    managed_auth_refresh: Option<ManagedAuthRefresh>,
     initialize_context: Mutex<Option<InitializeContext>>,
     session_recovery_lock: Semaphore,
     elicitation_pause_state: ElicitationPauseState,
@@ -347,6 +351,7 @@ impl RmcpClient {
             }),
             stdio_process: None,
             transport_recipe,
+            managed_auth_refresh: None,
             initialize_context: Mutex::new(None),
             session_recovery_lock: Semaphore::new(/*permits*/ 1),
             elicitation_pause_state: ElicitationPauseState::new(),
@@ -381,6 +386,7 @@ impl RmcpClient {
             }),
             stdio_process,
             transport_recipe,
+            managed_auth_refresh: None,
             initialize_context: Mutex::new(None),
             session_recovery_lock: Semaphore::new(/*permits*/ 1),
             elicitation_pause_state: ElicitationPauseState::new(),
@@ -398,6 +404,7 @@ impl RmcpClient {
         keyring_backend_kind: AuthKeyringBackendKind,
         http_client: Arc<dyn HttpClient>,
         auth_provider: Option<SharedAuthProvider>,
+        managed_auth_refresh: Option<ManagedAuthRefresh>,
     ) -> Result<Self> {
         let transport_recipe = TransportRecipe::StreamableHttp {
             server_name: server_name.to_string(),
@@ -418,6 +425,7 @@ impl RmcpClient {
             }),
             stdio_process: None,
             transport_recipe,
+            managed_auth_refresh,
             initialize_context: Mutex::new(None),
             session_recovery_lock: Semaphore::new(/*permits*/ 1),
             elicitation_pause_state: ElicitationPauseState::new(),
@@ -984,6 +992,7 @@ impl RmcpClient {
         Fut: std::future::Future<Output = std::result::Result<T, rmcp::service::ServiceError>>,
     {
         let service = self.service().await?;
+        let managed_auth_refresh = self.managed_auth_refresh.clone();
         match Self::run_service_operation_with_transient_retries(
             Arc::clone(&service),
             label,
@@ -994,6 +1003,30 @@ impl RmcpClient {
         .await
         {
             Ok(result) => Ok(result),
+            Err(error)
+                if managed_auth_refresh.is_some()
+                    && Self::is_auth_required_service_error(&error) =>
+            {
+                self.refresh_managed_auth_once(label, managed_auth_refresh)
+                    .await?;
+                match Self::run_service_operation_with_transient_retries(
+                    Arc::clone(&service),
+                    label,
+                    timeout,
+                    self.elicitation_pause_state.clone(),
+                    &operation,
+                )
+                .await
+                {
+                    Ok(result) => Ok(result),
+                    Err(error) if Self::is_auth_required_service_error(&error) => Err(
+                        anyhow!(AuthError::AuthorizationRequired).context(format!(
+                            "Anzoth managed MCP authentication refresh did not resolve the 401 for {label}"
+                        )),
+                    ),
+                    Err(error) => Err(error.into()),
+                }
+            }
             Err(error) if Self::is_session_expired_404(&error) => {
                 self.reinitialize_after_session_expiry(&service).await?;
                 let recovered_service = self.service().await?;
@@ -1009,6 +1042,22 @@ impl RmcpClient {
             }
             Err(error) => Err(error.into()),
         }
+    }
+
+    async fn refresh_managed_auth_once(
+        &self,
+        label: &str,
+        managed_auth_refresh: Option<ManagedAuthRefresh>,
+    ) -> Result<()> {
+        let Some(refresh) = managed_auth_refresh else {
+            return Ok(());
+        };
+        refresh().await.map_err(|error| {
+            anyhow!(AuthError::AuthorizationRequired).context(format!(
+                "Anzoth managed MCP authentication refresh failed during {label}: {error}"
+            ))
+        })?;
+        Ok(())
     }
 
     async fn run_service_operation_with_transient_retries<T, F, Fut>(
@@ -1126,6 +1175,19 @@ impl RmcpClient {
                     )
                 )
             })
+    }
+
+    fn is_auth_required_service_error(error: &ClientOperationError) -> bool {
+        let ClientOperationError::Service(rmcp::service::ServiceError::TransportSend(error)) =
+            error
+        else {
+            return false;
+        };
+
+        error
+            .error
+            .downcast_ref::<StreamableHttpError<StreamableHttpClientAdapterError>>()
+            .is_some_and(|error| matches!(error, StreamableHttpError::AuthRequired(_)))
     }
 
     async fn reinitialize_after_session_expiry(

@@ -2,121 +2,264 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Codex Sign-in Error</title>
-    <link rel="icon" href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="none" viewBox="0 0 32 32"%3E%3Cpath stroke="%23000" stroke-linecap="round" stroke-width="2.484" d="M22.356 19.797H17.17M9.662 12.29l1.979 3.576a.511.511 0 0 1-.005.504l-1.974 3.409M30.758 16c0 8.15-6.607 14.758-14.758 14.758-8.15 0-14.758-6.607-14.758-14.758C1.242 7.85 7.85 1.242 16 1.242c8.15 0 14.758 6.608 14.758 14.758Z"/%3E%3C/svg%3E' type="image/svg+xml">
+    <meta name="color-scheme" content="dark light" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anzoth sign-in error</title>
+    <meta name="theme-color" content="#03050A" />
+    <link rel="icon" href="__ANZOTH_FAVICON_DATA_URI__" type="image/png" />
     <style>
       :root {
-        color-scheme: light;
+        --bg: #03050a;
+        --surface: rgba(10, 13, 20, 0.88);
+        --surface-2: rgba(13, 17, 32, 0.92);
+        --border: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(255, 126, 126, 0.22);
+        --text-primary: #f4f7ff;
+        --text-secondary: rgba(244, 247, 255, 0.66);
+        --accent-blue: #5ea3ff;
+        --accent-purple: #bb5cff;
+        --error: #ff7e7e;
+        --shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
+        --font-sans: "SF Pro", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        min-height: 100%;
+      }
+
       body {
         margin: 0;
         min-height: 100vh;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
-          Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
-        background: radial-gradient(circle at top, #f7f8fb 0%, #ffffff 48%);
-        color: #0d0d0d;
+        color: var(--text-primary);
+        background:
+          radial-gradient(circle at top, rgba(78, 92, 255, 0.16), transparent 34%),
+          radial-gradient(circle at 18% 18%, rgba(187, 92, 255, 0.12), transparent 26%),
+          radial-gradient(circle at 82% 70%, rgba(94, 163, 255, 0.08), transparent 24%),
+          var(--bg);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
       }
-      .container {
+
+      .shell {
         min-height: 100vh;
-        padding: 24px;
-        box-sizing: border-box;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-      }
-      .card {
-        width: min(680px, 100%);
-        border-radius: 16px;
-        border: 1px solid rgba(13, 13, 13, 0.12);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.06);
-        background: #ffffff;
-        padding: 24px;
-      }
-      .brand {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
-      .logo {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 40px;
-        border-radius: 10px;
-        border: 1px solid rgba(0, 0, 0, 0.1);
-      }
-      .brand-title {
-        font-size: 14px;
-        color: #5d5d5d;
-      }
-      h1 {
-        margin: 18px 0 10px;
-        font-size: 28px;
-        line-height: 1.2;
-      }
-      .message {
-        margin: 0;
-        font-size: 16px;
-        line-height: 1.45;
-      }
-      .details {
-        margin-top: 18px;
-        border-radius: 12px;
-        border: 1px solid rgba(13, 13, 13, 0.1);
-        background: #fafafa;
-        padding: 14px;
         display: grid;
-        gap: 8px;
+        place-items: center;
+        padding: 32px 20px;
       }
+
+      .panel {
+        width: min(100%, 720px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+      }
+
+      .brand {
+        width: min(100%, 320px);
+        display: block;
+      }
+
+      .card {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(13, 17, 32, 0.92), rgba(8, 10, 17, 0.96)),
+          var(--surface);
+        box-shadow: var(--shadow);
+        padding: 38px 36px 34px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(135deg, rgba(94, 163, 255, 0.18), rgba(255, 126, 126, 0.18));
+        -webkit-mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+
+      .status {
+        width: 68px;
+        height: 68px;
+        margin: 0 auto 18px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        background:
+          linear-gradient(180deg, rgba(255, 126, 126, 0.2), rgba(187, 92, 255, 0.12)),
+          rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 126, 126, 0.28);
+        box-shadow: 0 0 0 8px rgba(255, 126, 126, 0.05);
+      }
+
+      .status svg {
+        width: 28px;
+        height: 28px;
+        color: var(--error);
+      }
+
+      h1 {
+        margin: 0;
+        text-align: center;
+        font-size: clamp(2rem, 3.2vw, 3rem);
+        line-height: 1.06;
+        font-weight: 650;
+        letter-spacing: -0.045em;
+      }
+
+      .message {
+        margin: 16px auto 0;
+        max-width: 56ch;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: clamp(1rem, 1.8vw, 1.08rem);
+        line-height: 1.6;
+        letter-spacing: -0.01em;
+      }
+
+      .message strong {
+        color: var(--text-primary);
+        font-weight: 650;
+      }
+
+      .details {
+        margin-top: 22px;
+        border-radius: 20px;
+        border: 1px solid var(--border-strong);
+        background: rgba(255, 126, 126, 0.06);
+        padding: 18px 18px 14px;
+        display: grid;
+        gap: 10px;
+      }
+
       .details-row {
         display: grid;
-        grid-template-columns: 136px 1fr;
-        gap: 10px;
-        font-size: 13px;
+        grid-template-columns: 140px 1fr;
+        gap: 14px;
+        font-size: 0.95rem;
+        line-height: 1.5;
         align-items: baseline;
       }
+
       .details-row strong {
-        color: #5d5d5d;
+        color: rgba(244, 247, 255, 0.72);
+        font-weight: 650;
       }
+
       code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
           "Courier New", monospace;
-        word-break: break-all;
+        word-break: break-word;
+        color: #f9fbff;
       }
+
       .help {
-        margin-top: 16px;
-        font-size: 14px;
-        color: #5d5d5d;
+        margin: 22px auto 0;
+        max-width: 56ch;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: 0.96rem;
+        line-height: 1.55;
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          padding: 24px 16px;
+        }
+
+        .panel {
+          gap: 18px;
+        }
+
+        .brand {
+          width: min(100%, 260px);
+        }
+
+        .card {
+          padding: 30px 20px 26px;
+          border-radius: 24px;
+        }
+
+        .status {
+          width: 60px;
+          height: 60px;
+          margin-bottom: 14px;
+        }
+
+        h1 {
+          font-size: clamp(1.7rem, 8vw, 2.3rem);
+        }
+
+        .message,
+        .help {
+          max-width: none;
+        }
+
+        .details {
+          padding: 16px 14px 12px;
+        }
+
+        .details-row {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="container">
-      <div class="card">
-        <div class="brand">
-          <div class="logo" aria-hidden="true">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 32 32"><path stroke="#000" stroke-linecap="round" stroke-width="2.484" d="M22.356 19.797H17.17M9.662 12.29l1.979 3.576a.511.511 0 0 1-.005.504l-1.974 3.409M30.758 16c0 8.15-6.607 14.758-14.758 14.758-8.15 0-14.758-6.607-14.758-14.758C1.242 7.85 7.85 1.242 16 1.242c8.15 0 14.758 6.608 14.758 14.758Z"></path></svg>
+    <main class="shell" aria-labelledby="error-heading">
+      <section class="panel">
+        <img class="brand" src="__ANZOTH_LOGO_DATA_URI__" alt="Anzoth" />
+        <div class="card" role="alert" aria-live="polite">
+          <div class="status" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M16 8.5V18" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" />
+              <circle cx="16" cy="23.5" r="1.9" fill="currentColor" />
+              <path
+                d="M16 3.5C23.2 3.5 29 9.3 29 16.5S23.2 29.5 16 29.5 3 23.7 3 16.5 8.8 3.5 16 3.5Z"
+                stroke="currentColor"
+                stroke-width="2.2"
+              />
+            </svg>
           </div>
-          <div class="brand-title">Codex login</div>
+          <h1 id="error-heading">{{error_title}}</h1>
+          <p class="message">{{error_message}}</p>
+          <div class="details" aria-label="Error details">
+            <div class="details-row">
+              <strong>Error code</strong>
+              <code>{{error_code}}</code>
+            </div>
+            <div class="details-row">
+              <strong>Details</strong>
+              <code>{{error_description}}</code>
+            </div>
+          </div>
+          <p class="help">{{error_help}}</p>
         </div>
-
-        <h1>{{error_title}}</h1>
-        <p class="message">{{error_message}}</p>
-
-        <div class="details">
-          <div class="details-row">
-            <strong>Error code</strong>
-            <code>{{error_code}}</code>
-          </div>
-          <div class="details-row">
-            <strong>Details</strong>
-            <code>{{error_description}}</code>
-          </div>
-        </div>
-
-        <p class="help">{{error_help}}</p>
-      </div>
-    </div>
+      </section>
+    </main>
+    <script>
+      window.history.replaceState(null, "", "/error");
+    </script>
   </body>
 </html>

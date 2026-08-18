@@ -25,6 +25,7 @@ use codex_exec_server::HttpClient;
 use codex_exec_server::RemoteExecServerConnectArgs;
 use codex_rmcp_client::ElicitationAction;
 use codex_rmcp_client::ElicitationResponse;
+use codex_rmcp_client::ManagedAuthRefresh;
 use codex_rmcp_client::RmcpClient;
 use codex_utils_cargo_bin::CargoBinError;
 use futures::FutureExt as _;
@@ -54,7 +55,7 @@ fn streamable_http_server_bin() -> Result<PathBuf, CargoBinError> {
     codex_utils_cargo_bin::cargo_bin("test_streamable_http_server")
 }
 
-fn init_params() -> InitializeRequestParams {
+pub(crate) fn init_params() -> InitializeRequestParams {
     let mut capabilities = ClientCapabilities::default();
     capabilities.elicitation = Some(ElicitationCapability {
         form: Some(FormElicitationCapability {
@@ -87,7 +88,19 @@ pub(crate) async fn create_client_with_http_client(
     base_url: &str,
     http_client: Arc<dyn HttpClient>,
 ) -> anyhow::Result<RmcpClient> {
-    let client = RmcpClient::new_streamable_http_client(
+    let client = create_client_with_http_client_and_refresh(base_url, http_client, None).await?;
+
+    initialize_client(&client).await?;
+
+    Ok(client)
+}
+
+pub(crate) async fn create_client_with_http_client_and_refresh(
+    base_url: &str,
+    http_client: Arc<dyn HttpClient>,
+    managed_auth_refresh: Option<ManagedAuthRefresh>,
+) -> anyhow::Result<RmcpClient> {
+    RmcpClient::new_streamable_http_client(
         "test-streamable-http",
         &format!("{base_url}/mcp"),
         Some("test-bearer".to_string()),
@@ -97,12 +110,9 @@ pub(crate) async fn create_client_with_http_client(
         AuthKeyringBackendKind::default(),
         http_client,
         /*auth_provider*/ None,
+        managed_auth_refresh,
     )
-    .await?;
-
-    initialize_client(&client).await?;
-
-    Ok(client)
+    .await
 }
 
 pub(crate) async fn initialize_client(client: &RmcpClient) -> anyhow::Result<()> {
@@ -141,6 +151,7 @@ pub(crate) async fn create_remote_client(
         AuthKeyringBackendKind::default(),
         Arc::new(http_client),
         /*auth_provider*/ None,
+        /*managed_auth_refresh*/ None,
     )
     .await?;
 

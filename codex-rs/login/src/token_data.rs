@@ -27,6 +27,14 @@ pub struct TokenData {
 /// Flat subset of useful claims in id_token from auth.json.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct IdTokenInfo {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub issuer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audience: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authorized_party: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
     pub email: Option<String>,
     /// The ChatGPT subscription plan type
     /// (e.g., "free", "plus", "pro", "business", "enterprise", "edu").
@@ -66,16 +74,37 @@ impl IdTokenInfo {
     pub fn is_fedramp_account(&self) -> bool {
         self.chatgpt_account_is_fedramp
     }
+
+    pub fn is_anzoth_issuer(&self) -> bool {
+        self.issuer.as_deref().is_some_and(|issuer| {
+            issuer.trim_end_matches('/') == "https://auth.anzoth.com/realms/anzoth"
+        })
+    }
 }
 
 #[derive(Deserialize)]
 struct IdClaims {
+    #[serde(default)]
+    iss: Option<String>,
+    #[serde(default)]
+    aud: Option<AudienceClaim>,
+    #[serde(default)]
+    azp: Option<String>,
+    #[serde(default)]
+    sub: Option<String>,
     #[serde(default)]
     email: Option<String>,
     #[serde(rename = "https://api.openai.com/profile", default)]
     profile: Option<ProfileClaims>,
     #[serde(rename = "https://api.openai.com/auth", default)]
     auth: Option<AuthClaims>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum AudienceClaim {
+    Single(String),
+    Multiple(Vec<String>),
 }
 
 #[derive(Deserialize)]
@@ -139,9 +168,31 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
     let email = claims
         .email
         .or_else(|| claims.profile.and_then(|profile| profile.email));
+    let audience = match claims.aud {
+        Some(AudienceClaim::Single(audience)) => {
+            let audience = audience.trim();
+            (!audience.is_empty()).then(|| vec![audience.to_string()])
+        }
+        Some(AudienceClaim::Multiple(audiences)) => {
+            let audiences = audiences
+                .into_iter()
+                .map(|aud| aud.trim().to_string())
+                .filter(|aud| !aud.is_empty())
+                .collect::<Vec<_>>();
+            (!audiences.is_empty()).then_some(audiences)
+        }
+        None => None,
+    };
+    let is_anzoth = claims.iss.as_deref().is_some_and(|issuer| {
+        issuer.trim_end_matches('/') == "https://auth.anzoth.com/realms/anzoth"
+    });
 
     match claims.auth {
         Some(auth) => Ok(IdTokenInfo {
+            issuer: claims.iss,
+            audience,
+            authorized_party: claims.azp,
+            subject: claims.sub,
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: auth.chatgpt_plan_type,
@@ -150,6 +201,10 @@ pub fn parse_chatgpt_jwt_claims(jwt: &str) -> Result<IdTokenInfo, IdTokenInfoErr
             chatgpt_account_is_fedramp: auth.chatgpt_account_is_fedramp,
         }),
         None => Ok(IdTokenInfo {
+            issuer: if is_anzoth { claims.iss } else { None },
+            audience: if is_anzoth { audience } else { None },
+            authorized_party: if is_anzoth { claims.azp } else { None },
+            subject: if is_anzoth { claims.sub } else { None },
             email,
             raw_jwt: jwt.to_string(),
             chatgpt_plan_type: None,

@@ -301,7 +301,7 @@ fn tool_cache_feedback_attachments(
         });
     }
 
-    let Some(auth) = auth.filter(|auth| auth.uses_codex_backend()) else {
+    let Some(auth) = auth.filter(|auth| auth.supports_any_apps()) else {
         return attachments;
     };
     let directory_cache_context = ConnectorDirectoryCacheContext::new(

@@ -284,6 +284,7 @@ struct ManagedClientStartup {
     runtime_context: McpRuntimeContext,
     resolved_environment: std::result::Result<Option<Arc<Environment>>, String>,
     runtime_auth_provider: Option<SharedAuthProvider>,
+    runtime_auth_refresh: Option<codex_rmcp_client::ManagedAuthRefresh>,
     client_elicitation_capability: ElicitationCapability,
     supports_openai_form_elicitation: bool,
     cancel_token: CancellationToken,
@@ -304,6 +305,7 @@ impl ManagedClientStartup {
             runtime_context,
             resolved_environment,
             runtime_auth_provider,
+            runtime_auth_refresh,
             client_elicitation_capability,
             supports_openai_form_elicitation,
             cancel_token,
@@ -339,6 +341,7 @@ impl ManagedClientStartup {
                         runtime_context,
                         resolved_environment,
                         runtime_auth_provider,
+                        runtime_auth_refresh,
                     ),
                 )
                 .await
@@ -431,6 +434,7 @@ impl AsyncManagedClient {
         runtime_context: McpRuntimeContext,
         resolved_environment: std::result::Result<Option<Arc<Environment>>, String>,
         runtime_auth_provider: Option<SharedAuthProvider>,
+        runtime_auth_refresh: Option<codex_rmcp_client::ManagedAuthRefresh>,
         client_elicitation_capability: ElicitationCapability,
         supports_openai_form_elicitation: bool,
     ) -> Self {
@@ -461,6 +465,7 @@ impl AsyncManagedClient {
             runtime_context,
             resolved_environment,
             runtime_auth_provider,
+            runtime_auth_refresh,
             client_elicitation_capability,
             supports_openai_form_elicitation,
             cancel_token: cancel_token.clone(),
@@ -1021,6 +1026,7 @@ async fn make_rmcp_client(
     runtime_context: McpRuntimeContext,
     resolved_environment: std::result::Result<Option<Arc<Environment>>, String>,
     runtime_auth_provider: Option<SharedAuthProvider>,
+    runtime_auth_refresh: Option<codex_rmcp_client::ManagedAuthRefresh>,
 ) -> Result<RmcpClient, StartupOutcomeError> {
     let config = match server.launch() {
         McpServerLaunch::Configured(config) => config.as_ref().clone(),
@@ -1094,6 +1100,7 @@ async fn make_rmcp_client(
                 keyring_backend_kind,
                 http_client,
                 runtime_auth_provider,
+                runtime_auth_refresh,
             )
             .await
             .map_err(StartupOutcomeError::from)

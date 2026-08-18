@@ -29,6 +29,7 @@ pub use catalog::McpServerSource;
 pub use catalog::ResolvedMcpCatalog;
 pub use catalog::ResolvedMcpServer;
 
+pub use mcp::ANZOTH_APPS_MCP_SERVER_NAME;
 pub use mcp::CODEX_APPS_MCP_SERVER_NAME;
 pub use mcp::McpConfig;
 pub use mcp::ToolPluginProvenance;
@@ -45,12 +46,16 @@ pub use auth_elicitation::build_auth_elicitation_plan;
 pub use auth_elicitation::connector_auth_failure_from_tool_result;
 /// Backward-compatible name for the Codex Apps runtime context key builder.
 pub use codex_connectors::connector_runtime_context_key as codex_apps_tools_cache_key;
+pub use mcp::anzoth_apps_mcp_server_config;
 pub use mcp::codex_apps_mcp_server_config;
 pub use mcp::configured_mcp_servers;
 pub use mcp::effective_mcp_servers;
 pub use mcp::effective_mcp_servers_from_configured;
+pub use mcp::host_owned_anzoth_apps_enabled;
+pub use mcp::host_owned_apps_auth_manager_enabled;
 pub use mcp::host_owned_codex_apps_enabled;
 pub use mcp::hosted_plugin_runtime_mcp_server_config;
+pub use mcp::is_host_owned_apps_server;
 pub use mcp::tool_plugin_provenance;
 pub use plugin_config::PluginMcpConfigParseOutcome;
 pub use plugin_config::PluginMcpServerParseError;

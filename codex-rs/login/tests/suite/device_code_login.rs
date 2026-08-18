@@ -91,7 +91,7 @@ async fn mock_poll_token_single(server: &MockServer, endpoint: &str, response: R
 
 async fn mock_oauth_token_single(server: &MockServer, jwt: String) {
     Mock::given(method("POST"))
-        .and(path("/oauth/token"))
+        .and(path("/protocol/openid-connect/token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "id_token": jwt.clone(),
             "access_token": "access-token-123",

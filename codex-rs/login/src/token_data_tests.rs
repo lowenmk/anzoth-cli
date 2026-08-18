@@ -118,6 +118,29 @@ fn id_token_info_handles_missing_fields() {
 }
 
 #[test]
+fn id_token_info_parses_generic_oidc_claims() {
+    let fake_jwt = fake_jwt(serde_json::json!({
+        "iss": "https://auth.anzoth.com/realms/anzoth",
+        "aud": "anzoth-cli",
+        "azp": "anzoth-cli",
+        "sub": "user-123",
+    }));
+
+    let info = parse_chatgpt_jwt_claims(&fake_jwt).expect("should parse");
+    assert_eq!(
+        info.issuer.as_deref(),
+        Some("https://auth.anzoth.com/realms/anzoth")
+    );
+    assert_eq!(
+        info.audience.as_deref(),
+        Some(&["anzoth-cli".to_string()][..])
+    );
+    assert_eq!(info.authorized_party.as_deref(), Some("anzoth-cli"));
+    assert_eq!(info.subject.as_deref(), Some("user-123"));
+    assert!(info.is_anzoth_issuer());
+}
+
+#[test]
 fn id_token_info_parses_fedramp_account_claim() {
     let fake_jwt = fake_jwt(serde_json::json!({
         "email": "user@example.com",

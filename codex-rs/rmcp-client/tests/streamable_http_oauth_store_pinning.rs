@@ -235,6 +235,7 @@ async fn auto_store_remains_pinned_across_session_recovery_child() -> anyhow::Re
         AuthKeyringBackendKind::Direct,
         Arc::new(http_client.clone()),
         /*auth_provider*/ None,
+        /*managed_auth_refresh*/ None,
     )
     .await?;
     initialize_client(&client).await?;

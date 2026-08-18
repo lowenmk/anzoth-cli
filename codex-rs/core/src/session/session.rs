@@ -1216,7 +1216,7 @@ impl Session {
                 cancel_token
             };
             let codex_apps_auth_manager =
-                codex_mcp::host_owned_codex_apps_enabled(&mcp_projection.config, auth)
+                codex_mcp::host_owned_apps_auth_manager_enabled(&mcp_projection.config, auth)
                     .then(|| Arc::clone(&sess.services.auth_manager));
             let mcp_connection_manager = McpConnectionManager::new(
                 &mcp_servers,

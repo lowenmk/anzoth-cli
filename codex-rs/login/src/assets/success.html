@@ -2,236 +2,203 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="color-scheme" content="light dark" />
-    <title>Signed in to Codex</title>
-    <link
-      rel="icon"
-      href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="none" viewBox="0 0 32 32"%3E%3Cpath stroke="%23000" stroke-linecap="round" stroke-width="2.484" d="M22.356 19.797H17.17M9.662 12.29l1.979 3.576a.511.511 0 0 1-.005.504l-1.974 3.409M30.758 16c0 8.15-6.607 14.758-14.758 14.758-8.15 0-14.758-6.607-14.758-14.758C1.242 7.85 7.85 1.242 16 1.242c8.15 0 14.758 6.608 14.758 14.758Z"/%3E%3C/svg%3E'
-      type="image/svg+xml"
-    />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Signed in to Anzoth</title>
+    <meta name="theme-color" content="#03050A" />
+    <link rel="icon" href="__ANZOTH_FAVICON_DATA_URI__" type="image/png" />
     <style>
       :root {
-        --font-use: "SF Pro", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        --gray-0: #ffffff;
-        --gray-50: #f9f9f9;
-        --gray-100: #ededed;
-        --gray-150: #dfdfdf;
-        --gray-300: #afafaf;
-        --gray-500: #5d5d5d;
-        --gray-900: #181818;
-        --gray-1000: #0d0d0d;
-        --color-background-surface: var(--gray-0);
-        --color-text-foreground: var(--gray-1000);
-        --color-border: rgb(13 13 13 / 10%);
-        --color-button-background: var(--gray-0);
-        --color-button-background-hover: var(--gray-50);
-        --color-button-border: var(--gray-100);
-        --color-button-border-hover: var(--gray-150);
-        --interactive-label-secondary-default: var(--gray-1000);
-        --text-secondary: var(--gray-500);
-        color: var(--color-text-foreground);
-        background: var(--color-background-surface);
-        font-family: var(--font-use);
-      }
-
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --color-background-surface: var(--gray-900);
-          --color-text-foreground: var(--gray-0);
-          --color-border: rgb(255 255 255 / 8%);
-          --color-button-background: rgb(255 255 255 / 5%);
-          --color-button-background-hover: rgb(255 255 255 / 8%);
-          --color-button-border: rgb(255 255 255 / 8%);
-          --color-button-border-hover: rgb(255 255 255 / 16%);
-          --interactive-label-secondary-default: var(--gray-300);
-          --text-secondary: rgb(255 255 255 / 65%);
-        }
+        --bg: #03050a;
+        --surface: rgba(10, 13, 20, 0.88);
+        --surface-2: rgba(13, 17, 32, 0.92);
+        --border: rgba(255, 255, 255, 0.08);
+        --border-strong: rgba(116, 138, 255, 0.24);
+        --text-primary: #f4f7ff;
+        --text-secondary: rgba(244, 247, 255, 0.66);
+        --accent-blue: #5ea3ff;
+        --accent-purple: #bb5cff;
+        --success: #5ef0ad;
+        --shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
+        --font-sans: "SF Pro", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
       }
 
       * {
         box-sizing: border-box;
       }
 
+      html,
+      body {
+        min-height: 100%;
+      }
+
       body {
         margin: 0;
         min-height: 100vh;
-        background: var(--color-background-surface);
+        color: var(--text-primary);
+        background:
+          radial-gradient(circle at top, rgba(78, 92, 255, 0.16), transparent 34%),
+          radial-gradient(circle at 18% 18%, rgba(187, 92, 255, 0.12), transparent 26%),
+          radial-gradient(circle at 82% 70%, rgba(94, 163, 255, 0.08), transparent 24%),
+          var(--bg);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: geometricPrecision;
       }
 
-      .wordmark {
-        position: fixed;
-        top: 18px;
-        left: 20px;
-        font-size: 21px;
-        font-weight: 650;
-        letter-spacing: -0.45px;
-        line-height: 24px;
-      }
-
-      main {
+      .shell {
         min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 56px 24px;
+        display: grid;
+        place-items: center;
+        padding: 32px 20px;
       }
 
-      .content {
-        width: min(100%, 560px);
+      .panel {
+        width: min(100%, 620px);
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 32px;
-        text-align: center;
+        gap: 22px;
       }
 
-      .message {
-        margin: 0;
-        color: var(--text-secondary, #5d5d5d);
-        font-feature-settings: "liga" off, "clig" off;
-        font-size: 14px;
-        font-style: normal;
-        font-weight: 400;
-        letter-spacing: -0.18px;
-        line-height: 20px;
+      .brand {
+        width: min(100%, 320px);
+        display: block;
       }
 
-      .button {
-        min-height: 36px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        border: 1px solid var(--color-button-border);
+      .card {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 28px;
+        background:
+          linear-gradient(180deg, rgba(13, 17, 32, 0.92), rgba(8, 10, 17, 0.96)),
+          var(--surface);
+        box-shadow: var(--shadow);
+        padding: 40px 36px 34px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .card::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 1px;
+        background: linear-gradient(135deg, rgba(94, 163, 255, 0.18), rgba(187, 92, 255, 0.14));
+        -webkit-mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        mask:
+          linear-gradient(#000 0 0) content-box,
+          linear-gradient(#000 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        pointer-events: none;
+      }
+
+      .status {
+        width: 68px;
+        height: 68px;
+        margin: 0 auto 18px;
+        display: grid;
+        place-items: center;
         border-radius: 999px;
-        background: var(--color-button-background);
-        color: var(--interactive-label-secondary-default, #0d0d0d);
-        cursor: pointer;
-        font-family: var(--font-use, "SF Pro");
-        font-feature-settings: "liga" off, "clig" off;
-        font-size: 14px;
-        font-style: normal;
-        font-weight: 510;
-        letter-spacing: -0.154px;
-        line-height: 20px;
-        padding: 8px 16px 8px 14px;
+        background:
+          linear-gradient(180deg, rgba(94, 163, 255, 0.18), rgba(187, 92, 255, 0.18)),
+          rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(120, 143, 255, 0.3);
+        box-shadow: 0 0 0 8px rgba(94, 163, 255, 0.04);
       }
 
-      .button:hover {
-        background: var(--color-button-background-hover);
-        border-color: var(--color-button-border-hover);
+      .status svg {
+        width: 30px;
+        height: 30px;
+        color: var(--success);
       }
 
-      .button:focus-visible {
-        outline: 2px solid var(--color-text-foreground);
-        outline-offset: 3px;
-      }
-
-      .codex-mark {
-        flex: 0 0 20px;
-        width: 20px;
-        height: 20px;
-      }
-
-      .setup-box {
-        display: none;
-        width: min(100vw - 32px, 560px);
-        padding: 16px 20px;
-        border: 1px solid var(--color-border);
-        border-radius: 16px;
-        text-align: left;
-      }
-
-      .setup-title {
-        margin: 0 0 4px;
-        font-size: 14px;
-        font-weight: 510;
-        line-height: 20px;
-      }
-
-      .setup-description {
+      h1 {
         margin: 0;
-        color: var(--text-secondary, #5d5d5d);
-        font-size: 14px;
-        line-height: 20px;
+        text-align: center;
+        font-size: clamp(2rem, 3.2vw, 3rem);
+        line-height: 1.06;
+        font-weight: 650;
+        letter-spacing: -0.045em;
+      }
+
+      .supporting {
+        margin: 16px auto 0;
+        max-width: 52ch;
+        text-align: center;
+        color: var(--text-secondary);
+        font-size: clamp(1rem, 1.8vw, 1.1rem);
+        line-height: 1.6;
+        letter-spacing: -0.01em;
+      }
+
+      .supporting strong {
+        color: var(--text-primary);
+        font-weight: 650;
+      }
+
+      @media (max-width: 640px) {
+        .shell {
+          padding: 24px 16px;
+        }
+
+        .panel {
+          gap: 18px;
+        }
+
+        .brand {
+          width: min(100%, 260px);
+        }
+
+        .card {
+          padding: 30px 20px 26px;
+          border-radius: 24px;
+        }
+
+        .status {
+          width: 60px;
+          height: 60px;
+          margin-bottom: 14px;
+        }
+
+        h1 {
+          font-size: clamp(1.7rem, 8vw, 2.3rem);
+        }
+
+        .supporting {
+          margin-top: 14px;
+        }
       }
     </style>
   </head>
   <body>
-    <div class="wordmark" aria-label="ChatGPT">ChatGPT</div>
-    <main>
-      <div class="content">
-        <p class="message" id="status-message">You&rsquo;re signed in and may close this tab</p>
-        <button class="button" type="button" id="open-codex">
-          <svg
-            class="codex-mark"
-            aria-hidden="true"
-            fill="none"
-            viewBox="0 0 32 32"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M22.356 19.797H17.17M9.662 12.29l1.979 3.576a.511.511 0 0 1-.005.504l-1.974 3.409M30.758 16c0 8.15-6.607 14.758-14.758 14.758-8.15 0-14.758-6.607-14.758-14.758C1.242 7.85 7.85 1.242 16 1.242c8.15 0 14.758 6.608 14.758 14.758Z"
-              stroke="currentColor"
-              stroke-linecap="round"
-              stroke-width="2.484"
-            />
-          </svg>
-          <span>Open Codex</span>
-        </button>
-        <div class="setup-box" id="setup-box">
-          <p class="setup-title">Finish setting up your API organization</p>
-          <p class="setup-description">Add a payment method to use your organization. Redirecting in <span id="countdown">3</span>s...</p>
+    <main class="shell" aria-labelledby="success-heading">
+      <section class="panel">
+        <img class="brand" src="__ANZOTH_LOGO_DATA_URI__" alt="Anzoth" />
+        <div class="card" role="status" aria-live="polite">
+          <div class="status" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M8 16.5L13.4 22L24 10"
+                stroke="currentColor"
+                stroke-width="2.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <h1 id="success-heading">Signed in to Anzoth</h1>
+          <p class="supporting">You can close this window and return to the Anzoth CLI.</p>
         </div>
-      </div>
+      </section>
     </main>
     <script>
-      (function () {
-        const CODEX_URL = "codex://threads/new";
-        const params = new URLSearchParams(window.location.search);
-        const preview = params.get("preview") === "true";
-        const needsSetup = params.get("needs_setup") === "true";
-        const platformUrl = params.get("platform_url") || "https://platform.openai.com";
-        const orgId = params.get("org_id");
-        const projectId = params.get("project_id");
-        const planType = params.get("plan_type");
-        const idToken = params.get("id_token");
-
-        window.history.replaceState(null, "", window.location.pathname);
-
-        function openCodex() {
-          window.location.href = CODEX_URL;
-        }
-
-        document.getElementById("open-codex").addEventListener("click", openCodex);
-        if (!preview) {
-          setTimeout(openCodex, 250);
-        }
-
-        if (needsSetup) {
-          const setupBox = document.getElementById("setup-box");
-          const countdownNode = document.getElementById("countdown");
-          setupBox.style.display = "block";
-          const redirectUrlObj = new URL("/org-setup", platformUrl);
-          redirectUrlObj.search = new URLSearchParams({
-            p: planType,
-            t: idToken,
-            with_org: orgId,
-            project_id: projectId,
-          }).toString();
-          let countdown = 3;
-          function tick() {
-            countdownNode.textContent = String(countdown);
-            if (countdown === 0) {
-              window.location.replace(redirectUrlObj.toString());
-              return;
-            }
-            countdown -= 1;
-            setTimeout(tick, 1000);
-          }
-          tick();
-        }
-      })();
+      window.history.replaceState(null, "", "/success");
     </script>
   </body>
 </html>

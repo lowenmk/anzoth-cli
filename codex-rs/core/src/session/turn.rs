@@ -860,7 +860,7 @@ async fn capture_current_model_fallback_step_context(
     let uses_codex_backend = turn_context
         .auth_manager
         .as_deref()
-        .is_some_and(codex_login::AuthManager::current_auth_uses_codex_backend);
+        .is_some_and(codex_login::AuthManager::current_auth_supports_any_apps);
     if !uses_codex_backend
         || !turn_context.provider.info().is_openai()
         || previous_model == turn_context.model_info.slug

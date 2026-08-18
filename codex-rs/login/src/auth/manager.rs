@@ -1,7 +1,6 @@
 use chrono::Utc;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use serde::Serialize;
 #[cfg(test)]
 use serial_test::serial;
 use std::env;
@@ -20,6 +19,7 @@ use std::time::Instant;
 use tokio::sync::Semaphore;
 use tokio::sync::watch;
 use tracing::instrument;
+use url::form_urlencoded;
 
 use codex_agent_identity::ChatGptEnvironment;
 use codex_protocol::auth::AuthMode;
@@ -186,8 +186,10 @@ const REFRESH_TOKEN_INVALIDATED_MESSAGE: &str = "Your access token could not be 
 const REFRESH_TOKEN_UNKNOWN_MESSAGE: &str =
     "Your access token could not be refreshed. Please log out and sign in again.";
 const REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE: &str = "Your access token could not be refreshed because you have since logged out or signed in to another account. Please sign in again.";
-const REFRESH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-pub(super) const REVOKE_TOKEN_URL: &str = "https://auth.openai.com/oauth/revoke";
+const REFRESH_TOKEN_URL: &str =
+    "https://auth.anzoth.com/realms/anzoth/protocol/openid-connect/token";
+pub(super) const REVOKE_TOKEN_URL: &str =
+    "https://auth.anzoth.com/realms/anzoth/protocol/openid-connect/revoke";
 pub const REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REFRESH_TOKEN_URL_OVERRIDE";
 pub const REVOKE_TOKEN_URL_OVERRIDE_ENV_VAR: &str = "CODEX_REVOKE_TOKEN_URL_OVERRIDE";
 pub const CLIENT_ID_OVERRIDE_ENV_VAR: &str = "CODEX_APP_SERVER_LOGIN_CLIENT_ID";
@@ -449,11 +451,31 @@ impl CodexAuth {
     }
 
     pub fn is_chatgpt_auth(&self) -> bool {
-        self.api_auth_mode().has_chatgpt_account()
+        self.api_auth_mode().has_chatgpt_account() && !self.is_anzoth_auth()
+    }
+
+    pub fn is_anzoth_auth(&self) -> bool {
+        self.get_current_token_data()
+            .is_some_and(|tokens| tokens.id_token.is_anzoth_issuer())
     }
 
     pub fn uses_codex_backend(&self) -> bool {
         self.api_auth_mode().uses_codex_backend()
+    }
+
+    /// Returns true when the current auth represents a ChatGPT-style account
+    /// that can safely bootstrap codex_apps and other ChatGPT-backed hosted app
+    /// experiences.
+    pub fn supports_codex_apps(&self) -> bool {
+        self.is_chatgpt_auth()
+    }
+
+    pub fn supports_anzoth_apps(&self) -> bool {
+        self.is_anzoth_auth()
+    }
+
+    pub fn supports_any_apps(&self) -> bool {
+        self.supports_codex_apps() || self.supports_anzoth_apps()
     }
 
     pub fn is_external_chatgpt_tokens(&self) -> bool {
@@ -554,7 +576,7 @@ impl CodexAuth {
             Self::PersonalAccessToken(auth) => Some(auth.chatgpt_user_id().to_string()),
             _ => self
                 .get_current_token_data()
-                .and_then(|t| t.id_token.chatgpt_user_id),
+                .and_then(|t| t.id_token.chatgpt_user_id.or(t.id_token.subject)),
         }
     }
 
@@ -1334,18 +1356,20 @@ async fn request_chatgpt_token_refresh(
     refresh_token: String,
     client: &HttpClient,
 ) -> Result<RefreshResponse, RefreshTokenError> {
-    let refresh_request = RefreshRequest {
-        client_id: oauth_client_id(),
-        grant_type: "refresh_token",
-        refresh_token,
+    let request_body = {
+        let mut serializer = form_urlencoded::Serializer::new(String::new());
+        serializer.append_pair("grant_type", "refresh_token");
+        serializer.append_pair("client_id", oauth_client_id().as_str());
+        serializer.append_pair("refresh_token", &refresh_token);
+        serializer.finish()
     };
     let endpoint = refresh_token_endpoint();
 
     // Use shared client factory to include standard headers
     let response = client
         .post(endpoint.as_str())
-        .header("Content-Type", "application/json")
-        .json(&refresh_request)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(request_body)
         .send()
         .await
         .map_err(|err| RefreshTokenError::Transient(std::io::Error::other(err)))?;
@@ -1427,13 +1451,6 @@ fn extract_refresh_token_error_code(body: &str) -> Option<String> {
     map.get("code").and_then(Value::as_str).map(str::to_string)
 }
 
-#[derive(Serialize)]
-struct RefreshRequest {
-    client_id: String,
-    grant_type: &'static str,
-    refresh_token: String,
-}
-
 #[derive(Deserialize, Clone)]
 struct RefreshResponse {
     id_token: Option<String>,
@@ -1442,7 +1459,7 @@ struct RefreshResponse {
 }
 
 // Shared constant for token refresh (client id used for oauth token refresh flow)
-pub const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
+pub const CLIENT_ID: &str = "anzoth-cli";
 
 pub fn oauth_client_id() -> String {
     std::env::var(CLIENT_ID_OVERRIDE_ENV_VAR)
@@ -2500,6 +2517,24 @@ impl AuthManager {
     pub fn current_auth_uses_codex_backend(&self) -> bool {
         self.get_api_auth_mode()
             .is_some_and(AuthMode::uses_codex_backend)
+    }
+
+    pub fn current_auth_supports_codex_apps(&self) -> bool {
+        self.auth_cached()
+            .as_ref()
+            .is_some_and(CodexAuth::supports_codex_apps)
+    }
+
+    pub fn current_auth_supports_anzoth_apps(&self) -> bool {
+        self.auth_cached()
+            .as_ref()
+            .is_some_and(CodexAuth::supports_anzoth_apps)
+    }
+
+    pub fn current_auth_supports_any_apps(&self) -> bool {
+        self.auth_cached()
+            .as_ref()
+            .is_some_and(CodexAuth::supports_any_apps)
     }
 
     fn should_refresh_proactively(auth: &CodexAuth) -> bool {

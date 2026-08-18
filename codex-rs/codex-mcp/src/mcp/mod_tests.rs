@@ -274,6 +274,21 @@ fn codex_apps_server_config_uses_legacy_codex_apps_path() {
 }
 
 #[test]
+fn host_owned_codex_apps_requires_chatgpt_style_auth() {
+    let mut config = test_mcp_config(PathBuf::new());
+    config.apps_enabled = true;
+
+    assert!(!host_owned_codex_apps_enabled(
+        &config,
+        Some(&CodexAuth::from_api_key("anz-test-key")),
+    ));
+    assert!(host_owned_codex_apps_enabled(
+        &config,
+        Some(&CodexAuth::create_dummy_chatgpt_auth_for_testing()),
+    ));
+}
+
+#[test]
 fn codex_apps_server_config_forwards_thread_originator_header() {
     let config = codex_apps_mcp_server_config(
         "https://chatgpt.com",
@@ -464,4 +479,21 @@ async fn effective_mcp_servers_preserve_runtime_servers() {
         }
         other => panic!("expected streamable http transport, got {other:?}"),
     }
+}
+
+#[test]
+fn anzoth_apps_mcp_server_config_uses_anzoth_oauth_settings() {
+    let config = anzoth_apps_mcp_server_config();
+    match &config.transport {
+        McpServerTransportConfig::StreamableHttp { url, .. } => {
+            assert_eq!(url, "https://mcp.anzoth.com/mcp");
+        }
+        other => panic!("expected streamable http transport, got {other:?}"),
+    }
+    assert_eq!(config.auth, codex_config::McpServerAuth::OAuth);
+    assert_eq!(config.oauth_client_id(), Some("anzoth-cli"));
+    assert_eq!(
+        config.oauth_resource.as_deref(),
+        Some("https://mcp.anzoth.com/mcp")
+    );
 }

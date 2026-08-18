@@ -1661,7 +1661,7 @@ impl PluginRequestProcessor {
                 .await;
         }
 
-        let is_chatgpt_auth = auth.as_ref().is_some_and(CodexAuth::is_chatgpt_auth);
+        let is_chatgpt_auth = auth.as_ref().is_some_and(CodexAuth::supports_any_apps);
         let apps_needing_auth = if let Some(app_ids_needing_auth) =
             install_result.app_ids_needing_auth
         {

@@ -26,6 +26,7 @@ use tempfile::TempDir;
 use wiremock::Mock;
 use wiremock::MockServer;
 use wiremock::ResponseTemplate;
+use wiremock::matchers::body_string_contains;
 use wiremock::matchers::method;
 use wiremock::matchers::path;
 
@@ -41,6 +42,9 @@ async fn refresh_token_succeeds_updates_storage() -> Result<()> {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/oauth/token"))
+        .and(body_string_contains("grant_type=refresh_token"))
+        .and(body_string_contains("client_id=staging-client"))
+        .and(body_string_contains("refresh_token=initial-refresh-token"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "access_token": "new-access-token",
             "refresh_token": "new-refresh-token"
@@ -69,14 +73,10 @@ async fn refresh_token_succeeds_updates_storage() -> Result<()> {
         .context("refresh should succeed")?;
 
     let requests = server.received_requests().await.unwrap_or_default();
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&requests[0].body)?,
-        json!({
-            "client_id": "staging-client",
-            "grant_type": "refresh_token",
-            "refresh_token": INITIAL_REFRESH_TOKEN,
-        })
-    );
+    let request_body = String::from_utf8(requests[0].body.clone())?;
+    assert!(request_body.contains("grant_type=refresh_token"));
+    assert!(request_body.contains("client_id=staging-client"));
+    assert!(request_body.contains("refresh_token=initial-refresh-token"));
 
     let refreshed_tokens = TokenData {
         access_token: "new-access-token".to_string(),

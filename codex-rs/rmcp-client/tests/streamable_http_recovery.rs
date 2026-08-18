@@ -1,20 +1,35 @@
 mod streamable_http_test_support;
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
+use codex_api::AuthProvider;
+use codex_config::types::AuthKeyringBackendKind;
+use codex_config::types::OAuthCredentialsStoreMode;
 use codex_exec_server::Environment;
 use codex_exec_server::ExecServerError;
 use codex_exec_server::HttpClient;
 use codex_exec_server::HttpRequestParams;
 use codex_exec_server::HttpRequestResponse;
 use codex_exec_server::HttpResponseBodyStream;
+use codex_rmcp_client::ManagedAuthRefresh;
+use codex_rmcp_client::RmcpClient;
+use codex_rmcp_client::is_authentication_required_error;
 use futures::FutureExt as _;
 use futures::future::BoxFuture;
 use pretty_assertions::assert_eq;
+use reqwest::header::AUTHORIZATION;
+use reqwest::header::HeaderMap;
 use serde_json::Value;
+use serde_json::json;
+use wiremock::Mock;
+use wiremock::MockServer;
+use wiremock::ResponseTemplate;
+use wiremock::matchers::method;
+use wiremock::matchers::path;
 
 use streamable_http_test_support::arm_initialize_post_failure;
 use streamable_http_test_support::arm_initialize_post_json_rpc_failure;
@@ -24,7 +39,9 @@ use streamable_http_test_support::arm_session_post_json_rpc_failure;
 use streamable_http_test_support::call_echo_tool;
 use streamable_http_test_support::create_client;
 use streamable_http_test_support::create_client_with_http_client;
+use streamable_http_test_support::create_client_with_http_client_and_refresh;
 use streamable_http_test_support::expected_echo_result;
+use streamable_http_test_support::initialize_client;
 use streamable_http_test_support::spawn_streamable_http_server;
 
 const JSON_RPC_INTERNAL_ERROR_CODE: i64 = -32603;
@@ -101,6 +118,50 @@ fn is_initialize_post(params: &HttpRequestParams) -> bool {
                     .map(|method| method == "initialize")
             })
             .unwrap_or(false)
+}
+
+fn managed_refresh_counter() -> (ManagedAuthRefresh, Arc<AtomicUsize>) {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let callback = {
+        let attempts = Arc::clone(&attempts);
+        Arc::new(move || {
+            let attempts = Arc::clone(&attempts);
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+            .boxed()
+        }) as ManagedAuthRefresh
+    };
+    (callback, attempts)
+}
+
+#[derive(Clone)]
+struct MutableBearerAuthProvider {
+    token: Arc<Mutex<String>>,
+}
+
+impl MutableBearerAuthProvider {
+    fn new(token: impl Into<String>) -> Self {
+        Self {
+            token: Arc::new(Mutex::new(token.into())),
+        }
+    }
+
+    fn set_token(&self, token: impl Into<String>) {
+        *self.token.lock().expect("token mutex poisoned") = token.into();
+    }
+}
+
+impl AuthProvider for MutableBearerAuthProvider {
+    fn add_auth_headers(&self, headers: &mut HeaderMap) {
+        let token = self.token.lock().expect("token mutex poisoned").clone();
+        headers.insert(
+            AUTHORIZATION,
+            reqwest::header::HeaderValue::from_str(&format!("Bearer {token}"))
+                .expect("valid bearer auth header"),
+        );
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
@@ -291,12 +352,193 @@ async fn streamable_http_401_does_not_trigger_recovery() -> anyhow::Result<()> {
     .await?;
 
     let first_error = call_echo_tool(&client, "unauthorized").await.unwrap_err();
-    assert!(first_error.to_string().contains("401"));
+    assert!(
+        is_authentication_required_error(&first_error)
+            || first_error.to_string().contains("Auth required")
+    );
 
     let second_error = call_echo_tool(&client, "still-unauthorized")
         .await
         .unwrap_err();
-    assert!(second_error.to_string().contains("401"));
+    assert!(
+        is_authentication_required_error(&second_error)
+            || second_error.to_string().contains("Auth required")
+    );
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn streamable_http_initialize_401_triggers_managed_refresh_once() -> anyhow::Result<()> {
+    let (_server, base_url) = spawn_streamable_http_server().await?;
+    arm_initialize_post_failure(&base_url, /*status*/ 401, /*remaining*/ 1).await?;
+
+    let (refresh, attempts) = managed_refresh_counter();
+    let client = create_client_with_http_client_and_refresh(
+        &base_url,
+        Environment::default_for_tests().get_http_client(),
+        Some(refresh),
+    )
+    .await?;
+
+    initialize_client(&client).await?;
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn streamable_http_initialize_401_retries_with_refreshed_managed_auth_token()
+-> anyhow::Result<()> {
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let auth_provider = MutableBearerAuthProvider::new("token-a");
+    let auth_provider_for_refresh = auth_provider.clone();
+    let refresh = {
+        let attempts = Arc::clone(&attempts);
+        Arc::new(move || {
+            let attempts = Arc::clone(&attempts);
+            let auth_provider = auth_provider_for_refresh.clone();
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                auth_provider.set_token("token-b");
+                Ok(())
+            }
+            .boxed()
+        }) as ManagedAuthRefresh
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/mcp"))
+        .respond_with(move |request: &wiremock::Request| {
+            let body: Value =
+                serde_json::from_slice(&request.body).expect("valid JSON-RPC request body");
+            let method = body.get("method").and_then(Value::as_str).unwrap_or("");
+            let auth_header = request
+                .headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or("");
+
+            match (method, auth_header) {
+                ("initialize", "Bearer token-a") => ResponseTemplate::new(401),
+                ("initialize", "Bearer token-b") => {
+                    ResponseTemplate::new(200).set_body_json(json!({
+                        "jsonrpc": "2.0",
+                        "id": body.get("id").cloned().unwrap_or(Value::Null),
+                        "result": {
+                            "protocolVersion": body
+                                .pointer("/params/protocolVersion")
+                                .cloned()
+                                .unwrap_or_else(|| json!("2025-06-18")),
+                            "capabilities": {},
+                            "serverInfo": {
+                                "name": "managed-auth-test",
+                                "version": "0.0.0-test",
+                            },
+                        },
+                    }))
+                }
+                ("notifications/initialized", "Bearer token-b") => ResponseTemplate::new(202),
+                _ => ResponseTemplate::new(500).set_body_string(format!(
+                    "unexpected request: method={method:?} auth={auth_header:?}"
+                )),
+            }
+        })
+        .expect(3)
+        .mount(&server)
+        .await;
+
+    let client = RmcpClient::new_streamable_http_client(
+        "managed-auth-test",
+        &format!("{}/mcp", server.uri()),
+        None,
+        None,
+        None,
+        OAuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::default(),
+        Environment::default_for_tests().get_http_client(),
+        Some(Arc::new(auth_provider.clone()) as codex_api::SharedAuthProvider),
+        Some(refresh),
+    )
+    .await?;
+
+    initialize_client(&client).await?;
+
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    server.verify().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn streamable_http_initialize_401_second_failure_returns_auth_required() -> anyhow::Result<()>
+{
+    let (_server, base_url) = spawn_streamable_http_server().await?;
+    arm_initialize_post_failure(&base_url, /*status*/ 401, /*remaining*/ 2).await?;
+
+    let (refresh, attempts) = managed_refresh_counter();
+    let client = create_client_with_http_client_and_refresh(
+        &base_url,
+        Environment::default_for_tests().get_http_client(),
+        Some(refresh),
+    )
+    .await?;
+
+    let error = initialize_client(&client).await.unwrap_err();
+    assert!(
+        is_authentication_required_error(&error) || error.to_string().contains("Auth required")
+    );
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn streamable_http_initialize_refresh_failure_returns_auth_required() -> anyhow::Result<()> {
+    let (_server, base_url) = spawn_streamable_http_server().await?;
+    arm_initialize_post_failure(&base_url, /*status*/ 401, /*remaining*/ 1).await?;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let refresh = {
+        let attempts = Arc::clone(&attempts);
+        Arc::new(move || {
+            let attempts = Arc::clone(&attempts);
+            async move {
+                attempts.fetch_add(1, Ordering::SeqCst);
+                Err(anyhow::anyhow!("refresh failed"))
+            }
+            .boxed()
+        }) as ManagedAuthRefresh
+    };
+    let client = create_client_with_http_client_and_refresh(
+        &base_url,
+        Environment::default_for_tests().get_http_client(),
+        Some(refresh),
+    )
+    .await?;
+
+    let error = initialize_client(&client).await.unwrap_err();
+    assert!(is_authentication_required_error(&error));
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn streamable_http_initialize_403_does_not_refresh() -> anyhow::Result<()> {
+    let (_server, base_url) = spawn_streamable_http_server().await?;
+    arm_initialize_post_failure(&base_url, /*status*/ 403, /*remaining*/ 1).await?;
+
+    let (refresh, attempts) = managed_refresh_counter();
+    let client = create_client_with_http_client_and_refresh(
+        &base_url,
+        Environment::default_for_tests().get_http_client(),
+        Some(refresh),
+    )
+    .await?;
+
+    let error = initialize_client(&client).await.unwrap_err();
+    assert!(!is_authentication_required_error(&error));
+    assert_eq!(attempts.load(Ordering::SeqCst), 0);
 
     Ok(())
 }

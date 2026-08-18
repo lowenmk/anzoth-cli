@@ -2,6 +2,9 @@ use super::*;
 use crate::auth::storage::FileAuthStorage;
 use crate::auth::storage::get_auth_file;
 use crate::token_data::IdTokenInfo;
+use chrono::Utc;
+use codex_config::types::AuthCredentialsStoreMode;
+use codex_config::types::AuthKeyringBackendKind;
 use codex_protocol::account::PlanType as AccountPlanType;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::auth::KnownPlan as InternalKnownPlan;
@@ -14,6 +17,7 @@ use codex_protocol::config_types::ModelProviderAuthInfo;
 use pretty_assertions::assert_eq;
 use serde::Serialize;
 use serde_json::json;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -842,6 +846,10 @@ async fn pro_account_with_no_api_key_uses_chatgpt_auth() {
             openai_api_key: None,
             tokens: Some(TokenData {
                 id_token: IdTokenInfo {
+                    issuer: None,
+                    audience: None,
+                    authorized_party: None,
+                    subject: None,
                     email: Some("user@example.com".to_string()),
                     chatgpt_plan_type: Some(InternalPlanType::Known(InternalKnownPlan::Pro)),
                     chatgpt_user_id: Some("user-12345".to_string()),
@@ -1146,6 +1154,63 @@ async fn external_auth_provider_can_install_headers() {
             .auth_cached()
             .is_some_and(|auth| auth.is_chatgpt_auth())
     );
+    assert!(
+        !manager
+            .auth_cached()
+            .is_some_and(|auth| auth.supports_codex_apps())
+    );
+}
+
+#[test]
+fn api_key_auth_does_not_support_codex_apps() {
+    let auth = CodexAuth::from_api_key("anz-test-key");
+
+    assert!(!auth.supports_codex_apps());
+}
+
+#[tokio::test]
+async fn anzoth_oidc_auth_supports_anzoth_apps_but_not_codex_apps() {
+    let auth_dot_json = AuthDotJson {
+        auth_mode: Some(AuthMode::Chatgpt),
+        openai_api_key: None,
+        tokens: Some(TokenData {
+            id_token: IdTokenInfo {
+                issuer: Some("https://auth.anzoth.com/realms/anzoth".to_string()),
+                audience: Some(vec!["anzoth-cli".to_string()]),
+                authorized_party: Some("anzoth-cli".to_string()),
+                subject: Some("subject-123".to_string()),
+                email: Some("user@example.com".to_string()),
+                chatgpt_plan_type: None,
+                chatgpt_user_id: None,
+                chatgpt_account_id: None,
+                chatgpt_account_is_fedramp: false,
+                raw_jwt: "header.payload.signature".to_string(),
+            },
+            access_token: "access-token".to_string(),
+            refresh_token: "refresh-token".to_string(),
+            account_id: None,
+        }),
+        last_refresh: Some(Utc::now()),
+        agent_identity: None,
+        personal_access_token: None,
+        bedrock_api_key: None,
+    };
+    let auth = CodexAuth::from_auth_dot_json(
+        Path::new("C:/tmp/anzoth-home"),
+        auth_dot_json,
+        AuthCredentialsStoreMode::Ephemeral,
+        /*chatgpt_base_url*/ None,
+        AuthKeyringBackendKind::default(),
+        /*agent_identity_authapi_base_url*/ None,
+        /*auth_route_config*/ None,
+    )
+    .await
+    .expect("auth should load");
+
+    assert!(!auth.supports_codex_apps());
+    assert!(auth.supports_anzoth_apps());
+    assert!(auth.supports_any_apps());
+    assert_eq!(auth.get_chatgpt_user_id().as_deref(), Some("subject-123"));
 }
 
 struct ProviderAuthScript {

@@ -44,6 +44,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use supports_color::Stream;
 
+const ANZOTH_CLI_VERSION: &str = "1.0.0.1";
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -94,7 +96,7 @@ use codex_terminal_detection::TerminalName;
 #[derive(Debug, Parser)]
 #[clap(
     author,
-    version,
+    version = ANZOTH_CLI_VERSION,
     // If a sub‑command is given, ignore requirements of the default args.
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform-specific name like

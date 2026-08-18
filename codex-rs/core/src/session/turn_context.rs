@@ -220,13 +220,11 @@ impl TurnContext {
     }
 
     pub(crate) fn apps_enabled(&self) -> bool {
-        let uses_codex_backend = self
+        let supports_apps = self
             .auth_manager
             .as_deref()
-            .is_some_and(AuthManager::current_auth_uses_codex_backend);
-        self.config
-            .features
-            .apps_enabled_for_auth(uses_codex_backend)
+            .is_some_and(AuthManager::current_auth_supports_any_apps);
+        self.config.features.apps_enabled_for_auth(supports_apps)
             && self.config.orchestrator_mcp_enabled
     }
 

@@ -374,7 +374,7 @@ fn image_generation_runtime_enabled(turn_context: &TurnContext) -> bool {
             && turn_context
                 .auth_manager
                 .as_deref()
-                .is_some_and(AuthManager::current_auth_uses_codex_backend)))
+                .is_some_and(AuthManager::current_auth_supports_any_apps)))
         && turn_context.provider.capabilities().image_generation
         && turn_context
             .model_info

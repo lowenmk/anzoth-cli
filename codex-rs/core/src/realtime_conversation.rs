@@ -1186,8 +1186,8 @@ fn realtime_api_key(auth: Option<&CodexAuth>, provider: &ModelProviderInfo) -> C
         return Ok(token);
     }
 
-    if let Some(api_key) = auth.and_then(CodexAuth::api_key) {
-        return Ok(api_key.to_string());
+    if let Some(token) = auth.and_then(|auth| auth.get_token().ok()) {
+        return Ok(token);
     }
 
     // TODO(aibrahim): Remove this temporary fallback once realtime auth no longer

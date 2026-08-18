@@ -28,6 +28,8 @@ use codex_connectors::ConnectorRuntimeContextKey;
 use codex_connectors::ConnectorRuntimeFetchSource;
 use codex_connectors::ConnectorRuntimeManager;
 use codex_exec_server::EnvironmentManager;
+use codex_login::AuthManager;
+use codex_login::CodexAuth;
 use codex_protocol::ToolName;
 use codex_protocol::mcp::McpServerInfo;
 use codex_protocol::models::PermissionProfile;
@@ -691,6 +693,36 @@ fn codex_apps_env_bearer_token_bypasses_shared_tools_cache() {
         CODEX_APPS_MCP_SERVER_NAME,
         /*uses_env_bearer_token*/ true,
     ));
+}
+
+#[test]
+fn runtime_auth_refresh_only_applies_to_anzoth_apps() {
+    let auth_manager = AuthManager::from_auth_for_testing(CodexAuth::from_api_key("test"));
+
+    assert!(
+        runtime_auth_refresh_for_server(
+            ANZOTH_APPS_MCP_SERVER_NAME,
+            Some(&auth_manager),
+            /*supports_anzoth_apps*/ true
+        )
+        .is_some()
+    );
+    assert!(
+        runtime_auth_refresh_for_server(
+            CODEX_APPS_MCP_SERVER_NAME,
+            Some(&auth_manager),
+            /*supports_anzoth_apps*/ true
+        )
+        .is_none()
+    );
+    assert!(
+        runtime_auth_refresh_for_server(
+            ANZOTH_APPS_MCP_SERVER_NAME,
+            Some(&auth_manager),
+            /*supports_anzoth_apps*/ false
+        )
+        .is_none()
+    );
 }
 
 #[tokio::test]
