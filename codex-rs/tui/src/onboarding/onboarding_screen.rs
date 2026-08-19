@@ -15,7 +15,6 @@ use codex_app_server_client::AppServerRequestHandle;
 use codex_app_server_protocol::ServerNotification;
 use codex_exec_server::LOCAL_FS;
 use codex_git_utils::resolve_root_git_project_for_trust;
-use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 #[cfg(target_os = "windows")]
 use codex_protocol::config_types::WindowsSandboxLevel;
 use crossterm::event::KeyCode;
@@ -113,7 +112,7 @@ impl OnboardingScreen {
         } = args;
         let cwd = config.cwd.to_path_buf();
         let forced_login_method = config.forced_login_method;
-        let anzoth_api_key_only_flow = config.model_provider_id == ANZOTH_PROVIDER_ID;
+        let anzoth_api_key_only_flow = false;
         let mut steps: Vec<Step> = Vec::new();
         steps.push(Step::Welcome(WelcomeWidget::new(
             !matches!(login_status, LoginStatus::NotAuthenticated),
@@ -130,15 +129,11 @@ impl OnboardingScreen {
                 }
             };
             if let Some(app_server_request_handle) = app_server_request_handle {
-                let mut auth_widget = AuthModeWidget {
+                let auth_widget = AuthModeWidget {
                     request_frame: tui.frame_requester(),
                     highlighted_mode,
                     error: Arc::new(RwLock::new(None)),
-                    sign_in_state: Arc::new(RwLock::new(if anzoth_api_key_only_flow {
-                        SignInState::ApiKeyEntry(Default::default())
-                    } else {
-                        SignInState::PickMode
-                    })),
+                    sign_in_state: Arc::new(RwLock::new(SignInState::PickMode)),
                     login_status,
                     app_server_request_handle,
                     forced_login_method,
@@ -146,9 +141,6 @@ impl OnboardingScreen {
                     animations_enabled: config.animations,
                     animations_suppressed: std::cell::Cell::new(false),
                 };
-                if anzoth_api_key_only_flow {
-                    auth_widget.start_api_key_entry();
-                }
                 steps.push(Step::Auth(auth_widget));
             } else {
                 tracing::warn!("skipping onboarding login step without app-server request handle");
@@ -645,7 +637,6 @@ mod tests {
     use super::persist_selected_trust;
     use super::suppress_quit_while_typing_api_key;
     use crate::LoginStatus;
-    use crate::onboarding::auth::ApiKeyInputState;
     use crate::onboarding::auth::AuthModeWidget;
     use crate::onboarding::auth::SignInOption;
     use crate::onboarding::auth::SignInState;
@@ -718,15 +709,13 @@ mod tests {
 
         let auth_widget = AuthModeWidget {
             request_frame: FrameRequester::test_dummy(),
-            highlighted_mode: SignInOption::ApiKey,
+            highlighted_mode: SignInOption::ChatGpt,
             error: Arc::new(RwLock::new(None)),
-            sign_in_state: Arc::new(RwLock::new(SignInState::ApiKeyEntry(
-                ApiKeyInputState::default(),
-            ))),
+            sign_in_state: Arc::new(RwLock::new(SignInState::PickMode)),
             login_status: LoginStatus::NotAuthenticated,
             app_server_request_handle: AppServerRequestHandle::InProcess(client.request_handle()),
-            forced_login_method: Some(codex_protocol::config_types::ForcedLoginMethod::Api),
-            anzoth_api_key_only_flow: true,
+            forced_login_method: None,
+            anzoth_api_key_only_flow: false,
             animations_enabled: false,
             animations_suppressed: std::cell::Cell::new(false),
         };
@@ -746,6 +735,24 @@ mod tests {
         };
 
         (screen, codex_home)
+    }
+
+    #[tokio::test]
+    async fn new_anzoth_onboarding_uses_pick_mode_by_default() {
+        let (screen, _codex_home) = build_anzoth_screen().await;
+        let auth_step = screen
+            .steps
+            .iter()
+            .find_map(|step| match step {
+                Step::Auth(widget) => Some(widget),
+                _ => None,
+            })
+            .expect("expected auth step");
+
+        assert!(matches!(
+            &*auth_step.sign_in_state.read().unwrap(),
+            SignInState::PickMode
+        ));
     }
 
     #[test]

@@ -28,7 +28,6 @@ if not defined ANZOTH_COMPAT_MODE (
             echo model_provider = 'anzoth'
             echo model = 'Anzoth-Core'
             echo model_catalog_json = '%MODEL_CATALOG%'
-            echo forced_login_method = 'api'
         )
     )
 )
