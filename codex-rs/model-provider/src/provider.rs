@@ -9,6 +9,7 @@ use codex_api::Provider;
 use codex_api::SharedAuthProvider;
 use codex_login::AuthManager;
 use codex_login::CodexAuth;
+use codex_model_provider_info::ANZOTH_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_models_manager::manager::OpenAiModelsManager;
 use codex_models_manager::manager::SharedModelsManager;
@@ -263,7 +264,7 @@ impl ModelProvider for ConfiguredModelProvider {
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        if self.info.env_key.as_deref() == Some("ANZOTH_API_KEY") {
+        if self.is_anzoth_provider() || self.info.env_key.as_deref() == Some("ANZOTH_API_KEY") {
             ProviderCapabilities {
                 namespace_tools: false,
                 web_search: true,
@@ -381,6 +382,12 @@ impl ModelProvider for ConfiguredModelProvider {
                 ))
             }
         }
+    }
+}
+
+impl ConfiguredModelProvider {
+    fn is_anzoth_provider(&self) -> bool {
+        self.info.name.eq_ignore_ascii_case("Anzoth") || self.info.name == ANZOTH_PROVIDER_ID
     }
 }
 
@@ -524,6 +531,42 @@ mod tests {
             ModelProviderInfo::create_anzoth_provider(/*base_url*/ None),
             /*auth_manager*/ None,
         );
+
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                namespace_tools: false,
+                web_search: true,
+                ..ProviderCapabilities::default()
+            }
+        );
+    }
+
+    #[test]
+    fn legacy_anzoth_api_key_shape_disables_namespace_tools() {
+        let provider_info = ModelProviderInfo {
+            name: "legacy-anzoth".to_string(),
+            env_key: Some("ANZOTH_API_KEY".to_string()),
+            ..ModelProviderInfo::create_openai_provider(/*base_url*/ None)
+        };
+        let provider = create_model_provider(provider_info, /*auth_manager*/ None);
+
+        assert_eq!(
+            provider.capabilities(),
+            ProviderCapabilities {
+                namespace_tools: false,
+                web_search: true,
+                ..ProviderCapabilities::default()
+            }
+        );
+    }
+
+    #[test]
+    fn built_in_anzoth_provider_disables_namespace_tools_without_env_key() {
+        let provider_info = ModelProviderInfo::create_anzoth_provider(/*base_url*/ None);
+        assert!(provider_info.env_key.is_none());
+
+        let provider = create_model_provider(provider_info, /*auth_manager*/ None);
 
         assert_eq!(
             provider.capabilities(),

@@ -1726,3 +1726,23 @@ async fn anzoth_provider_exposes_hosted_web_search() {
         }
     );
 }
+
+#[tokio::test]
+async fn anzoth_provider_filters_namespaced_tools_from_model_surface() {
+    let plan = probe_with(
+        |turn| {
+            use_anzoth_provider(turn);
+        },
+        ToolPlanInputs {
+            extension_tool_executors: vec![Arc::new(TestNamespaceExtensionTool {
+                namespace: "docs",
+                tool_name: "search",
+            })],
+            ..Default::default()
+        },
+    )
+    .await;
+
+    plan.assert_visible_lacks(&["docs"]);
+    plan.assert_registered_contains(&["docssearch"]);
+}
