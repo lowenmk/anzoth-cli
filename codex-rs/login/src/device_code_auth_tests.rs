@@ -141,9 +141,44 @@ async fn native_device_authorization_request_has_pkce_fields() {
         .await;
 
     let client = create_raw_auth_client(&server.uri(), None).unwrap();
-    let (device, pkce_verifier) = request_native_device_code(&client, &server.uri(), "client-id")
-        .await
-        .expect("native device request should succeed");
+    let (device, pkce_verifier) =
+        request_native_device_code(&client, &server.uri(), "client-id", None)
+            .await
+            .expect("native device request should succeed");
+    assert_eq!(device.device_code, "device-code-123");
+    assert!(!pkce_verifier.is_empty());
+}
+
+#[tokio::test]
+async fn native_device_authorization_request_includes_login_hint_when_provided() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/protocol/openid-connect/auth/device"))
+        .respond_with(|request: &Request| {
+            let body = String::from_utf8(request.body.clone()).unwrap();
+            assert!(body.contains("client_id=client-id"));
+            assert!(body.contains("login_hint=user%40example.com"));
+            ResponseTemplate::new(200).set_body_json(json!({
+                "device_code": "device-code-123",
+                "user_code": "USER-CODE",
+                "verification_uri": "https://auth.anzoth.com/realms/anzoth/device",
+                "verification_uri_complete": "https://auth.anzoth.com/realms/anzoth/device?user_code=USER-CODE",
+                "expires_in": 600,
+                "interval": 5
+            }))
+        })
+        .mount(&server)
+        .await;
+
+    let client = create_raw_auth_client(&server.uri(), None).unwrap();
+    let (device, pkce_verifier) = request_native_device_code(
+        &client,
+        &server.uri(),
+        "client-id",
+        Some("user@example.com"),
+    )
+    .await
+    .expect("native device request should succeed");
     assert_eq!(device.device_code, "device-code-123");
     assert!(!pkce_verifier.is_empty());
 }

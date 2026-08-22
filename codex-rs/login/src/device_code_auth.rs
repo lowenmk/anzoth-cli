@@ -177,6 +177,7 @@ async fn request_native_device_code(
     client: &HttpClient,
     auth_base_url: &str,
     client_id: &str,
+    login_hint: Option<&str>,
 ) -> std::io::Result<(NativeDeviceCodeResp, String)> {
     let pkce = generate_pkce();
     let body = {
@@ -186,6 +187,12 @@ async fn request_native_device_code(
             .append_pair("scope", "openid profile email")
             .append_pair("code_challenge", &pkce.code_challenge)
             .append_pair("code_challenge_method", "S256");
+        if let Some(login_hint) = login_hint {
+            let login_hint = login_hint.trim();
+            if !login_hint.is_empty() {
+                serializer.append_pair("login_hint", login_hint);
+            }
+        }
         serializer.finish()
     };
     let resp = client
@@ -380,11 +387,18 @@ fn print_device_code_prompt(verification_url: &str, code: Option<&str>) {
 }
 
 pub async fn request_device_code(opts: &ServerOptions) -> std::io::Result<DeviceCode> {
+    request_device_code_with_login_hint(opts, None).await
+}
+
+pub async fn request_device_code_with_login_hint(
+    opts: &ServerOptions,
+    login_hint: Option<&str>,
+) -> std::io::Result<DeviceCode> {
     let base_url = opts.issuer.trim_end_matches('/');
     let client = create_raw_auth_client(base_url, opts.auth_route_config.as_ref())?;
     if base_url == "https://auth.anzoth.com/realms/anzoth" {
         let (uc, pkce_verifier) =
-            request_native_device_code(&client, base_url, &opts.client_id).await?;
+            request_native_device_code(&client, base_url, &opts.client_id, login_hint).await?;
         Ok(device_code_from_native_response(uc, Some(pkce_verifier)))
     } else {
         let api_base_url = format!("{base_url}/api/accounts");
@@ -478,7 +492,18 @@ pub async fn complete_device_code_login(
 }
 
 pub async fn run_device_code_login(opts: ServerOptions) -> std::io::Result<()> {
-    let device_code = request_device_code(&opts).await?;
+    let device_code = request_device_code_with_login_hint(&opts, None).await?;
+    let code =
+        (device_code.verification_url_complete.is_none()).then_some(device_code.user_code.as_str());
+    print_device_code_prompt(&device_code.verification_url, code);
+    complete_device_code_login(opts, device_code).await
+}
+
+pub async fn run_device_code_login_with_login_hint(
+    opts: ServerOptions,
+    login_hint: Option<&str>,
+) -> std::io::Result<()> {
+    let device_code = request_device_code_with_login_hint(&opts, login_hint).await?;
     let code =
         (device_code.verification_url_complete.is_none()).then_some(device_code.user_code.as_str());
     print_device_code_prompt(&device_code.verification_url, code);

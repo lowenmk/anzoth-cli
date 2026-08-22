@@ -17,14 +17,16 @@ use codex_login::ServerOptions;
 use codex_login::login_with_access_token;
 use codex_login::login_with_api_key;
 use codex_login::logout_with_revoke;
-use codex_login::run_device_code_login;
+use codex_login::run_device_code_login_with_login_hint;
 use codex_login::run_login_server;
 use codex_protocol::auth::AuthMode;
 use codex_protocol::config_types::ForcedLoginMethod;
 use codex_utils_cli::CliConfigOverrides;
 use std::fs::OpenOptions;
+use std::io::BufRead;
 use std::io::IsTerminal;
 use std::io::Read;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 use tracing_appender::non_blocking;
@@ -159,6 +161,13 @@ fn device_login_server_options(
         opts.issuer = ANZOTH_LOGIN_ISSUER.to_string();
     }
     opts
+}
+
+fn should_prompt_for_device_code_email(issuer_base_url: Option<&str>) -> bool {
+    match issuer_base_url.map(|issuer| issuer.trim_end_matches('/')) {
+        None => true,
+        Some(issuer) => issuer == ANZOTH_LOGIN_ISSUER,
+    }
 }
 
 async fn clear_existing_auth_before_login(
@@ -363,6 +372,27 @@ fn read_stdin_secret(terminal_message: &str, reading_message: &str, empty_messag
     secret
 }
 
+fn read_device_code_login_hint() -> Option<String> {
+    let stdin = std::io::stdin();
+    if !stdin.is_terminal() {
+        return None;
+    }
+
+    eprint!(
+        "Optional: enter the email address to prefill the device-code login, or press Enter to skip: "
+    );
+    let _ = std::io::stderr().flush();
+
+    let mut stdin = stdin.lock();
+    let mut buffer = String::new();
+    if stdin.read_line(&mut buffer).is_err() {
+        return None;
+    }
+
+    let email = buffer.trim().to_string();
+    if email.is_empty() { None } else { Some(email) }
+}
+
 /// Login using the OAuth device code flow.
 pub async fn run_login_with_device_code(
     cli_config_overrides: CliConfigOverrides,
@@ -384,16 +414,19 @@ pub async fn run_login_with_device_code(
     )
     .await;
     let forced_chatgpt_workspace_id = config.forced_chatgpt_workspace_id.clone();
+    let login_hint = should_prompt_for_device_code_email(issuer_base_url.as_deref())
+        .then(read_device_code_login_hint)
+        .flatten();
     let opts = device_login_server_options(
         config.codex_home.to_path_buf(),
         forced_chatgpt_workspace_id,
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
         config.auth_route_config(),
-        issuer_base_url,
+        issuer_base_url.clone(),
         client_id,
     );
-    match run_device_code_login(opts).await {
+    match run_device_code_login_with_login_hint(opts, login_hint.as_deref()).await {
         Ok(()) => {
             eprintln!("{LOGIN_SUCCESS_MESSAGE}");
             std::process::exit(0);
@@ -436,12 +469,15 @@ pub async fn run_login_with_device_code_fallback_to_browser(
         config.cli_auth_credentials_store_mode,
         config.auth_keyring_backend_kind(),
         config.auth_route_config(),
-        issuer_base_url,
+        issuer_base_url.clone(),
         client_id,
     );
     opts.open_browser = false;
+    let login_hint = should_prompt_for_device_code_email(issuer_base_url.as_deref())
+        .then(read_device_code_login_hint)
+        .flatten();
 
-    match run_device_code_login(opts.clone()).await {
+    match run_device_code_login_with_login_hint(opts.clone(), login_hint.as_deref()).await {
         Ok(()) => {
             eprintln!("{LOGIN_SUCCESS_MESSAGE}");
             std::process::exit(0);
@@ -670,5 +706,16 @@ mod tests {
 
         assert_eq!(opts.issuer, ANZOTH_LOGIN_ISSUER);
         assert_eq!(opts.client_id, super::CLIENT_ID);
+    }
+
+    #[test]
+    fn device_code_email_prompt_is_only_for_anzoth_issuer() {
+        assert!(super::should_prompt_for_device_code_email(None));
+        assert!(super::should_prompt_for_device_code_email(Some(
+            ANZOTH_LOGIN_ISSUER
+        )));
+        assert!(!super::should_prompt_for_device_code_email(Some(
+            "https://example.com"
+        )));
     }
 }
