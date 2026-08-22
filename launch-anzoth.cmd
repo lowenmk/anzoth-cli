@@ -9,14 +9,14 @@ if defined ANZOTH_COMPAT_MODE (
         if defined CODEX_HOME (
             set "ANZOTH_HOME=%CODEX_HOME%"
         ) else (
-            set "ANZOTH_HOME=%USERPROFILE%\.codex"
+            echo ANZOTH_COMPAT_MODE requires ANZOTH_HOME or CODEX_HOME
+            exit /b 1
         )
     )
     if not defined ANZOTH_API_KEY if defined OPENAI_API_KEY set "ANZOTH_API_KEY=%OPENAI_API_KEY%"
     if not defined ANZOTH_API_KEY if defined CODEX_API_KEY set "ANZOTH_API_KEY=%CODEX_API_KEY%"
 ) else (
     if not defined ANZOTH_HOME set "ANZOTH_HOME=%USERPROFILE%\.anzoth"
-    set "CODEX_HOME=%ANZOTH_HOME%"
     if not defined ANZOTH_API_KEY if defined OPENAI_API_KEY set "ANZOTH_API_KEY=%OPENAI_API_KEY%"
     if not defined ANZOTH_API_KEY if defined CODEX_API_KEY set "ANZOTH_API_KEY=%CODEX_API_KEY%"
 )
