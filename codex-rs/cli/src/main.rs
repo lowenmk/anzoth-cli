@@ -44,7 +44,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use supports_color::Stream;
 
-const ANZOTH_CLI_VERSION: &str = "1.0.0.1";
+const ANZOTH_CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod app_cmd;

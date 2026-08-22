@@ -1,2 +1,2 @@
-/// The current Codex CLI version as embedded at compile time.
-pub const CODEX_CLI_VERSION: &str = "1.0.0.1";
+/// The current Anzoth CLI version as embedded at compile time.
+pub const CODEX_CLI_VERSION: &str = env!("CARGO_PKG_VERSION");
