@@ -184,6 +184,55 @@ async fn native_device_authorization_request_includes_login_hint_when_provided()
 }
 
 #[tokio::test]
+async fn device_code_email_link_request_posts_email_and_complete_url() {
+    let server = MockServer::start().await;
+    let server_uri = server.uri();
+    Mock::given(method("POST"))
+        .and(path("/realms/anzoth/anzoth-device/email-link"))
+        .respond_with(move |request: &Request| {
+            let body = String::from_utf8(request.body.clone()).unwrap();
+            assert!(body.contains(r#""email":"user@example.com""#));
+            assert!(body.contains(&format!(
+                r#""verification_uri_complete":"{server_uri}/realms/anzoth/device?user_code=USER-CODE""#
+            )));
+            assert!(!body.contains("device_code"));
+            assert!(!body.contains("access_token"));
+            assert!(!body.contains("refresh_token"));
+            ResponseTemplate::new(202)
+        })
+        .mount(&server)
+        .await;
+
+    let result = send_device_code_email_link(
+        &format!("{}/realms/anzoth/device?user_code=USER-CODE", server.uri()),
+        " user@example.com ",
+        None,
+    )
+    .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn device_code_email_link_request_failure_is_returned() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/realms/anzoth/anzoth-device/email-link"))
+        .respond_with(ResponseTemplate::new(500))
+        .mount(&server)
+        .await;
+
+    let result = send_device_code_email_link(
+        &format!("{}/realms/anzoth/device?user_code=USER-CODE", server.uri()),
+        "user@example.com",
+        None,
+    )
+    .await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
 async fn native_poll_authorization_pending_retries_until_success() {
     let server = MockServer::start().await;
     let attempts = Arc::new(AtomicUsize::new(0));

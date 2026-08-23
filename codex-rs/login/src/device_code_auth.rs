@@ -7,11 +7,13 @@ use serde::de::{self};
 use std::time::Duration;
 use std::time::Instant;
 
+use crate::AuthRouteConfig;
 use crate::default_client::create_raw_auth_client;
 use crate::pkce::PkceCodes;
 use crate::pkce::generate_pkce;
 use crate::server::ServerOptions;
 use std::io;
+use url::Url;
 
 const ANSI_BLUE: &str = "\x1b[94m";
 const ANSI_GRAY: &str = "\x1b[90m";
@@ -79,6 +81,12 @@ struct NativeTokenErrorResp {
     error_description: Option<String>,
 }
 
+#[derive(Serialize)]
+struct DeviceCodeEmailLinkReq<'a> {
+    email: &'a str,
+    verification_uri_complete: &'a str,
+}
+
 fn deserialize_interval<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: Deserializer<'de>,
@@ -143,6 +151,25 @@ fn native_device_token_endpoint(base_url: &str) -> String {
         "{}/protocol/openid-connect/token",
         base_url.trim_end_matches('/')
     )
+}
+
+fn derive_issuer_base_from_verification_url(verification_url: &str) -> io::Result<String> {
+    let mut url = Url::parse(verification_url).map_err(io::Error::other)?;
+    url.set_query(None);
+    url.set_fragment(None);
+
+    let path = url.path().trim_end_matches('/').to_string();
+    let issuer_path = path
+        .strip_suffix("/protocol/openid-connect/auth/device")
+        .or_else(|| path.strip_suffix("/device"))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "verification URL does not look like a device-code link",
+            )
+        })?;
+    url.set_path(issuer_path);
+    Ok(url.to_string().trim_end_matches('/').to_string())
 }
 
 fn native_poll_delay_seconds(current_interval: u64, error: &str) -> Option<u64> {
@@ -510,6 +537,42 @@ pub async fn run_device_code_login_with_login_hint(
         (device_code.verification_url_complete.is_none()).then_some(device_code.user_code.as_str());
     print_device_code_prompt(&device_code.verification_url, code);
     complete_device_code_login(opts, device_code).await
+}
+
+pub async fn send_device_code_email_link(
+    verification_url_complete: &str,
+    email: &str,
+    auth_route_config: Option<&AuthRouteConfig>,
+) -> io::Result<()> {
+    let email = email.trim();
+    if email.is_empty() {
+        return Ok(());
+    }
+
+    let issuer_base_url = derive_issuer_base_from_verification_url(verification_url_complete)?;
+    let client = create_raw_auth_client(&issuer_base_url, auth_route_config)?;
+    let email_link_endpoint = format!("{issuer_base_url}/anzoth-device/email-link");
+    let body = serde_json::to_string(&DeviceCodeEmailLinkReq {
+        email,
+        verification_uri_complete: verification_url_complete,
+    })
+    .map_err(io::Error::other)?;
+    let resp = client
+        .post(email_link_endpoint)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .await
+        .map_err(io::Error::other)?;
+
+    if resp.status() == StatusCode::ACCEPTED || resp.status().is_success() {
+        Ok(())
+    } else {
+        Err(io::Error::other(format!(
+            "device code email-link request failed with status {}",
+            resp.status()
+        )))
+    }
 }
 
 #[cfg(test)]

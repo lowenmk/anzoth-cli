@@ -16,6 +16,7 @@ use codex_app_server_protocol::ClientRequest;
 use codex_app_server_protocol::LoginAccountParams;
 use codex_app_server_protocol::LoginAccountResponse;
 use codex_login::read_openai_api_key_from_env;
+use codex_login::send_device_code_email_link;
 use codex_protocol::auth::AuthMode;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -131,6 +132,9 @@ pub(crate) struct ContinueWithDeviceCodeState {
     login_id: Option<String>,
     verification_url: Option<String>,
     user_code: Option<String>,
+    email_input: String,
+    email_status: Option<String>,
+    email_submitted: bool,
 }
 
 impl ContinueWithDeviceCodeState {
@@ -140,6 +144,9 @@ impl ContinueWithDeviceCodeState {
             login_id: None,
             verification_url: None,
             user_code: None,
+            email_input: String::new(),
+            email_status: None,
+            email_submitted: false,
         }
     }
 
@@ -154,6 +161,9 @@ impl ContinueWithDeviceCodeState {
             login_id: Some(login_id),
             verification_url: Some(verification_url),
             user_code: Some(user_code),
+            email_input: String::new(),
+            email_status: None,
+            email_submitted: false,
         }
     }
 
@@ -170,11 +180,24 @@ impl ContinueWithDeviceCodeState {
                 .as_deref()
                 .is_some_and(|user_code| !user_code.is_empty())
     }
+
+    pub(crate) fn is_anzoth_device_login(&self) -> bool {
+        self.verification_url
+            .as_deref()
+            .is_some_and(|url| url.contains("https://auth.anzoth.com/realms/anzoth"))
+    }
+
+    pub(crate) fn email_prompt_visible(&self) -> bool {
+        self.is_showing_copyable_auth() && self.is_anzoth_device_login() && !self.email_submitted
+    }
 }
 
 impl KeyboardHandler for AuthModeWidget {
     fn handle_key_event(&mut self, key_event: KeyEvent) {
         if self.handle_api_key_entry_key_event(&key_event) {
+            return;
+        }
+        if self.handle_device_code_email_key_event(&key_event) {
             return;
         }
 
@@ -218,7 +241,11 @@ impl KeyboardHandler for AuthModeWidget {
     }
 
     fn handle_paste(&mut self, pasted: String) {
-        let _ = self.handle_api_key_entry_paste(pasted);
+        let api_key_paste = pasted.clone();
+        let _ = self.handle_api_key_entry_paste(api_key_paste);
+        if self.handle_device_code_email_paste(pasted) {
+            return;
+        }
     }
 }
 
@@ -963,6 +990,155 @@ impl AuthModeWidget {
         headless_chatgpt_login::start_headless_chatgpt_login(self);
     }
 
+    fn device_code_email_prompt_visible(&self) -> bool {
+        matches!(
+            &*self.sign_in_state.read().unwrap(),
+            SignInState::ChatGptDeviceCode(state) if state.email_prompt_visible()
+        )
+    }
+
+    fn handle_device_code_email_key_event(&mut self, key_event: &KeyEvent) -> bool {
+        if !self.device_code_email_prompt_visible() {
+            return false;
+        }
+
+        if matches!(key_event.kind, KeyEventKind::Release) {
+            return false;
+        }
+
+        let mut submitted_email: Option<String> = None;
+        {
+            let mut guard = self.sign_in_state.write().unwrap();
+            let SignInState::ChatGptDeviceCode(state) = &mut *guard else {
+                return false;
+            };
+            if !state.email_prompt_visible() {
+                return false;
+            }
+            match key_event.code {
+                KeyCode::Char(ch)
+                    if !key_event
+                        .modifiers
+                        .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+                {
+                    state.email_input.push(ch);
+                    self.request_frame.schedule_frame();
+                    return true;
+                }
+                KeyCode::Backspace => {
+                    state.email_input.pop();
+                    self.request_frame.schedule_frame();
+                    return true;
+                }
+                KeyCode::Delete => {
+                    state.email_input.clear();
+                    self.request_frame.schedule_frame();
+                    return true;
+                }
+                KeyCode::Enter => {
+                    state.email_submitted = true;
+                    let email = state.email_input.trim().to_string();
+                    if email.is_empty() {
+                        state.email_status =
+                            Some("Continue signing in in your browser.".to_string());
+                        self.request_frame.schedule_frame();
+                        return true;
+                    }
+                    state.email_status = Some("Sending sign-in link by email...".to_string());
+                    submitted_email = Some(email);
+                }
+                _ => return false,
+            }
+        }
+
+        if let Some(email) = submitted_email {
+            let request_id = {
+                let guard = self.sign_in_state.read().unwrap();
+                match &*guard {
+                    SignInState::ChatGptDeviceCode(state) => state.request_id.clone(),
+                    _ => return false,
+                }
+            };
+            let verification_uri_complete = {
+                let guard = self.sign_in_state.read().unwrap();
+                match &*guard {
+                    SignInState::ChatGptDeviceCode(state) => {
+                        let Some(verification_url) = state.verification_url.clone() else {
+                            return false;
+                        };
+                        if verification_url.contains("user_code=") {
+                            verification_url
+                        } else if let Some(user_code) = state.user_code.as_deref() {
+                            format!(
+                                "{verification_url}?user_code={}",
+                                urlencoding::encode(user_code)
+                            )
+                        } else {
+                            verification_url
+                        }
+                    }
+                    _ => return false,
+                }
+            };
+            let sign_in_state = self.sign_in_state.clone();
+            let request_frame = self.request_frame.clone();
+            let error = self.error.clone();
+            tokio::spawn(async move {
+                let result =
+                    send_device_code_email_link(&verification_uri_complete, &email, None).await;
+                let message = match result {
+                    Ok(()) => "Sign-in link sent by email.".to_string(),
+                    Err(err) => {
+                        tracing::warn!("device code email delivery failed: {err}");
+                        "Unable to send the sign-in link by email. Continue signing in in your browser."
+                            .to_string()
+                    }
+                };
+
+                let mut guard = sign_in_state.write().unwrap();
+                let is_active = matches!(
+                    &*guard,
+                    SignInState::ChatGptDeviceCode(state) if state.request_id == request_id
+                );
+                if !is_active {
+                    return;
+                }
+                if let SignInState::ChatGptDeviceCode(state) = &mut *guard {
+                    state.email_status = Some(message);
+                }
+                *error.write().unwrap() = None;
+                drop(guard);
+                request_frame.schedule_frame();
+            });
+            self.request_frame.schedule_frame();
+            return true;
+        }
+
+        false
+    }
+
+    fn handle_device_code_email_paste(&mut self, pasted: String) -> bool {
+        if !self.device_code_email_prompt_visible() || pasted.is_empty() {
+            return false;
+        }
+
+        let pasted = pasted.replace(['\r', '\n'], "");
+        if pasted.is_empty() {
+            return false;
+        }
+
+        let mut guard = self.sign_in_state.write().unwrap();
+        let SignInState::ChatGptDeviceCode(state) = &mut *guard else {
+            return false;
+        };
+        if !state.email_prompt_visible() {
+            return false;
+        }
+        state.email_input.push_str(&pasted);
+        self.request_frame.schedule_frame();
+        true
+    }
+
     pub(crate) fn on_account_login_completed(
         &mut self,
         notification: AccountLoginCompletedNotification,
@@ -1433,6 +1609,61 @@ mod tests {
         ));
     }
 
+    #[tokio::test]
+    async fn device_code_login_renders_optional_email_prompt() {
+        let (widget, _tmp) = widget_forced_chatgpt().await;
+        *widget.sign_in_state.write().unwrap() =
+            SignInState::ChatGptDeviceCode(ContinueWithDeviceCodeState::ready(
+                "request-1".to_string(),
+                "login-1".to_string(),
+                "https://auth.anzoth.com/realms/anzoth/device?user_code=ABCD-EFGH".to_string(),
+                "ABCD-EFGH".to_string(),
+            ));
+        let area = Rect::new(0, 0, 120, 24);
+        let mut buf = Buffer::empty(area);
+        let state = match &*widget.sign_in_state.read().unwrap() {
+            SignInState::ChatGptDeviceCode(state) => state.clone(),
+            _ => panic!("expected device code state"),
+        };
+
+        super::headless_chatgpt_login::render_device_code_login(&widget, area, &mut buf, &state);
+
+        let mut rendered = String::new();
+        for y in 0..area.height {
+            for x in 0..area.width {
+                rendered.push_str(buf[(x, y)].symbol());
+            }
+            rendered.push('\n');
+        }
+
+        assert!(rendered.contains(
+            "Optional: enter your Anzoth account email to receive this sign-in link by email"
+        ));
+        assert!(rendered.contains("<press Enter to skip>"));
+    }
+
+    #[tokio::test]
+    async fn blank_device_code_email_enter_skips_without_blocking_login() {
+        let (mut widget, _tmp) = widget_forced_chatgpt().await;
+        *widget.sign_in_state.write().unwrap() =
+            SignInState::ChatGptDeviceCode(ContinueWithDeviceCodeState::ready(
+                "request-1".to_string(),
+                "login-1".to_string(),
+                "https://auth.anzoth.com/realms/anzoth/device?user_code=ABCD-EFGH".to_string(),
+                "ABCD-EFGH".to_string(),
+            ));
+
+        assert!(widget.handle_device_code_email_key_event(&KeyEvent::new(
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+        )));
+
+        assert!(matches!(
+            &*widget.sign_in_state.read().unwrap(),
+            SignInState::ChatGptDeviceCode(state) if state.email_submitted && state.email_status.as_deref() == Some("Continue signing in in your browser.")
+        ));
+    }
+
     /// Collects all buffer cell symbols that contain the OSC 8 open sequence
     /// for the given URL.  Returns the concatenated "inner" characters.
     fn collect_osc8_chars(buf: &Buffer, area: Rect, url: &str) -> String {
@@ -1520,6 +1751,25 @@ mod tests {
             &*widget.sign_in_state.read().unwrap(),
             SignInState::ChatGptSuccessMessage
         ));
+    }
+
+    #[test]
+    fn device_code_email_prompt_is_anzoth_only() {
+        let anzoth_state = ContinueWithDeviceCodeState::ready(
+            "request-1".to_string(),
+            "login-1".to_string(),
+            "https://auth.anzoth.com/realms/anzoth/device?user_code=ABCD-EFGH".to_string(),
+            "ABCD-EFGH".to_string(),
+        );
+        assert!(anzoth_state.email_prompt_visible());
+
+        let chatgpt_state = ContinueWithDeviceCodeState::ready(
+            "request-2".to_string(),
+            "login-2".to_string(),
+            "https://auth.openai.com/device?user_code=ABCD-EFGH".to_string(),
+            "ABCD-EFGH".to_string(),
+        );
+        assert!(!chatgpt_state.email_prompt_visible());
     }
 
     #[test]

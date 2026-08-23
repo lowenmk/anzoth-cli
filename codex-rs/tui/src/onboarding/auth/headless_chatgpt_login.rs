@@ -130,6 +130,23 @@ pub(super) fn render_device_code_login(
                 .dim()
                 .into(),
         );
+        if state.email_prompt_visible() {
+            lines.push("".into());
+            lines.push(
+                "  3. Optional: enter your Anzoth account email to receive this sign-in link by email"
+                    .into(),
+            );
+            let email_line = if state.email_input.is_empty() {
+                Line::from(vec!["     ".into(), "<press Enter to skip>".dim()])
+            } else {
+                Line::from(vec!["     ".into(), state.email_input.as_str().cyan()])
+            };
+            lines.push(email_line);
+        }
+        if let Some(status) = &state.email_status {
+            lines.push("".into());
+            lines.push(Line::from(vec!["  ".into(), status.as_str().dim()]));
+        }
         lines.push("".into());
         Some(verification_url.clone())
     } else {

@@ -16,6 +16,7 @@ pub use device_code_auth::request_device_code;
 pub use device_code_auth::request_device_code_with_login_hint;
 pub use device_code_auth::run_device_code_login;
 pub use device_code_auth::run_device_code_login_with_login_hint;
+pub use device_code_auth::send_device_code_email_link;
 pub use server::LoginServer;
 pub use server::ServerOptions;
 pub use server::ShutdownHandle;
