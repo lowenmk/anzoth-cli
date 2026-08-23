@@ -23,8 +23,8 @@ pub enum Account {
     #[ts(rename = "apiKey", rename_all = "camelCase")]
     ApiKey {},
 
-    #[serde(rename = "chatgpt", rename_all = "camelCase")]
-    #[ts(rename = "chatgpt", rename_all = "camelCase")]
+    #[serde(rename = "Anzoth.OAuth", alias = "chatgpt", rename_all = "camelCase")]
+    #[ts(rename = "Anzoth.OAuth", rename_all = "camelCase")]
     Chatgpt {
         #[schemars(required, schema_with = "nullable_string_schema")]
         email: Option<String>,
@@ -73,8 +73,8 @@ pub enum LoginAccountParams {
         #[ts(rename = "apiKey")]
         api_key: String,
     },
-    #[serde(rename = "chatgpt", rename_all = "camelCase")]
-    #[ts(rename = "chatgpt", rename_all = "camelCase")]
+    #[serde(rename = "Anzoth.OAuth", alias = "chatgpt", rename_all = "camelCase")]
+    #[ts(rename = "Anzoth.OAuth", rename_all = "camelCase")]
     Chatgpt {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         codex_streamlined_login: bool,
@@ -130,8 +130,8 @@ pub enum LoginAccountResponse {
     #[serde(rename = "apiKey", rename_all = "camelCase")]
     #[ts(rename = "apiKey", rename_all = "camelCase")]
     ApiKey {},
-    #[serde(rename = "chatgpt", rename_all = "camelCase")]
-    #[ts(rename = "chatgpt", rename_all = "camelCase")]
+    #[serde(rename = "Anzoth.OAuth", alias = "chatgpt", rename_all = "camelCase")]
+    #[ts(rename = "Anzoth.OAuth", rename_all = "camelCase")]
     Chatgpt {
         // Use plain String for identifiers to avoid TS/JSON Schema quirks around uuid-specific types.
         // Convert to/from UUIDs at the application layer as needed.

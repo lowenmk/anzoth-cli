@@ -15,13 +15,16 @@ use serde::Serialize;
 use strum_macros::Display;
 use ts_rs::TS;
 
-/// Authentication mode for OpenAI-backed providers.
+/// Authentication mode for Anzoth/OpenAI-backed providers.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, Display, JsonSchema, TS)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthMode {
     /// OpenAI API key provided by the caller and stored by Codex.
     ApiKey,
-    /// ChatGPT OAuth managed by Codex (tokens persisted and refreshed by Codex).
+    /// Anzoth OAuth managed by Codex (tokens persisted and refreshed by Codex).
+    #[serde(rename = "Anzoth.OAuth", alias = "chatgpt")]
+    #[ts(rename = "Anzoth.OAuth")]
+    #[strum(serialize = "Anzoth.OAuth")]
     Chatgpt,
     /// [UNSTABLE] FOR OPENAI INTERNAL USE ONLY - DO NOT USE.
     ///
@@ -2783,6 +2786,53 @@ mod tests {
     }
 
     #[test]
+    fn serialize_auth_mode_anzoth_oauth() -> Result<()> {
+        assert_eq!(
+            json!("Anzoth.OAuth"),
+            serde_json::to_value(AuthMode::Chatgpt)?,
+        );
+        assert_eq!(AuthMode::Chatgpt, serde_json::from_value(json!("chatgpt"))?,);
+        Ok(())
+    }
+
+    #[test]
+    fn deserialize_legacy_chatgpt_aliases() -> Result<()> {
+        assert_eq!(
+            v2::Account::Chatgpt {
+                email: Some("user@example.com".to_string()),
+                plan_type: PlanType::Plus,
+            },
+            serde_json::from_value(json!({
+                "type": "chatgpt",
+                "email": "user@example.com",
+                "planType": "plus"
+            }))?,
+        );
+        assert_eq!(
+            v2::LoginAccountParams::Chatgpt {
+                app_brand: None,
+                codex_streamlined_login: false,
+                use_hosted_login_success_page: false,
+            },
+            serde_json::from_value(json!({
+                "type": "chatgpt"
+            }))?,
+        );
+        assert_eq!(
+            v2::LoginAccountResponse::Chatgpt {
+                login_id: "login-id".to_string(),
+                auth_url: "https://example.com/login".to_string(),
+            },
+            serde_json::from_value(json!({
+                "type": "chatgpt",
+                "loginId": "login-id",
+                "authUrl": "https://example.com/login"
+            }))?,
+        );
+        Ok(())
+    }
+
+    #[test]
     fn serialize_account_login_chatgpt() -> Result<()> {
         let request = ClientRequest::LoginAccount {
             request_id: RequestId::Integer(3),
@@ -2797,11 +2847,22 @@ mod tests {
                 "method": "account/login/start",
                 "id": 3,
                 "params": {
-                    "type": "chatgpt",
+                    "type": "Anzoth.OAuth",
                     "appBrand": null
                 }
             }),
             serde_json::to_value(&request)?,
+        );
+        assert_eq!(
+            json!({
+                "type": "Anzoth.OAuth",
+                "loginId": "login-id",
+                "authUrl": "https://example.com/login"
+            }),
+            serde_json::to_value(v2::LoginAccountResponse::Chatgpt {
+                login_id: "login-id".to_string(),
+                auth_url: "https://example.com/login".to_string(),
+            })?,
         );
         Ok(())
     }
@@ -2821,7 +2882,7 @@ mod tests {
                 "method": "account/login/start",
                 "id": 3,
                 "params": {
-                    "type": "chatgpt",
+                    "type": "Anzoth.OAuth",
                     "appBrand": null,
                     "codexStreamlinedLogin": true
                 }
@@ -2846,7 +2907,7 @@ mod tests {
                 "method": "account/login/start",
                 "id": 3,
                 "params": {
-                    "type": "chatgpt",
+                    "type": "Anzoth.OAuth",
                     "appBrand": "chatgpt",
                     "codexStreamlinedLogin": true,
                     "useHostedLoginSuccessPage": true
@@ -2969,7 +3030,7 @@ mod tests {
         };
         assert_eq!(
             json!({
-                "type": "chatgpt",
+                "type": "Anzoth.OAuth",
                 "email": "user@example.com",
                 "planType": "plus",
             }),
@@ -2982,7 +3043,7 @@ mod tests {
         };
         assert_eq!(
             json!({
-                "type": "chatgpt",
+                "type": "Anzoth.OAuth",
                 "email": null,
                 "planType": "pro",
             }),
