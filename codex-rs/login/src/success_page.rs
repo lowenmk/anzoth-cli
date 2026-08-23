@@ -43,7 +43,7 @@ pub(crate) fn compose_success_url(
     codex_streamlined_login: bool,
     login_success_page: &LoginSuccessPage,
 ) -> LoginSuccessRedirect {
-    let token_claims = jwt_auth_claims(id_token);
+    let token_claims = jwt_auth_claims(issuer, id_token);
     let completed_onboarding = token_claims
         .get("completed_platform_onboarding")
         .and_then(JsonValue::as_bool)
@@ -66,7 +66,10 @@ pub(crate) fn compose_success_url(
     LoginSuccessRedirect::Local(format!("http://localhost:{port}/success"))
 }
 
-pub(crate) fn jwt_auth_claims(jwt: &str) -> serde_json::Map<String, serde_json::Value> {
+pub(crate) fn jwt_auth_claims(
+    issuer: &str,
+    jwt: &str,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut parts = jwt.split('.');
     let (_header, payload, _signature) = match (parts.next(), parts.next(), parts.next()) {
         (Some(header), Some(payload), Some(signature))
@@ -88,7 +91,9 @@ pub(crate) fn jwt_auth_claims(jwt: &str) -> serde_json::Map<String, serde_json::
                 {
                     return claims.clone();
                 }
-                eprintln!("JWT payload missing expected 'https://api.openai.com/auth' object");
+                if !is_anzoth_issuer(issuer) {
+                    eprintln!("JWT payload missing expected 'https://api.openai.com/auth' object");
+                }
             }
             Err(error) => {
                 eprintln!("Failed to parse JWT JSON payload: {error}");
@@ -99,6 +104,10 @@ pub(crate) fn jwt_auth_claims(jwt: &str) -> serde_json::Map<String, serde_json::
         }
     }
     serde_json::Map::new()
+}
+
+fn is_anzoth_issuer(issuer: &str) -> bool {
+    issuer.trim_end_matches('/') == "https://auth.anzoth.com/realms/anzoth"
 }
 
 #[cfg(test)]

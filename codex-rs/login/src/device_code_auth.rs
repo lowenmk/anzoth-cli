@@ -473,6 +473,7 @@ pub async fn complete_device_code_login(
     };
 
     if let Err(message) = crate::server::ensure_workspace_allowed(
+        &opts.issuer,
         opts.forced_chatgpt_workspace_id.as_deref(),
         &tokens.id_token,
     ) {
@@ -481,6 +482,7 @@ pub async fn complete_device_code_login(
 
     crate::server::persist_tokens_async(
         &opts.codex_home,
+        &opts.issuer,
         /*api_key*/ None,
         tokens.id_token,
         tokens.access_token,

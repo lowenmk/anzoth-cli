@@ -395,6 +395,7 @@ async fn process_request(
             {
                 Ok(tokens) => {
                     if let Err(message) = ensure_workspace_allowed(
+                        &opts.issuer,
                         opts.forced_chatgpt_workspace_id.as_deref(),
                         &tokens.id_token,
                     ) {
@@ -417,6 +418,7 @@ async fn process_request(
                     .ok();
                     if let Err(err) = persist_tokens_async(
                         &opts.codex_home,
+                        &opts.issuer,
                         api_key.clone(),
                         tokens.id_token.clone(),
                         tokens.access_token.clone(),
@@ -888,6 +890,7 @@ pub(crate) async fn exchange_code_for_tokens(
 /// Persists exchanged credentials using the configured local auth store.
 pub(crate) async fn persist_tokens_async(
     codex_home: &Path,
+    issuer: &str,
     api_key: Option<String>,
     id_token: String,
     access_token: String,
@@ -897,10 +900,11 @@ pub(crate) async fn persist_tokens_async(
 ) -> io::Result<()> {
     // Reuse existing synchronous logic but run it off the async runtime.
     let codex_home = codex_home.to_path_buf();
+    let issuer = issuer.to_owned();
     tokio::task::spawn_blocking(move || {
         let id_token_info = parse_chatgpt_jwt_claims(&id_token).map_err(io::Error::other)?;
         let account_id = id_token_info.subject.clone().or_else(|| {
-            jwt_auth_claims(&id_token)
+            jwt_auth_claims(&issuer, &id_token)
                 .get("chatgpt_account_id")
                 .and_then(|v| v.as_str())
                 .map(ToOwned::to_owned)
@@ -933,6 +937,7 @@ pub(crate) async fn persist_tokens_async(
 
 /// Validates the ID token against an optional workspace restriction.
 pub(crate) fn ensure_workspace_allowed(
+    issuer: &str,
     expected: Option<&[String]>,
     id_token: &str,
 ) -> Result<(), String> {
@@ -940,7 +945,7 @@ pub(crate) fn ensure_workspace_allowed(
         return Ok(());
     };
 
-    let claims = jwt_auth_claims(id_token);
+    let claims = jwt_auth_claims(issuer, id_token);
     let Some(actual) = claims.get("chatgpt_account_id").and_then(JsonValue::as_str) else {
         return Err("Login is restricted to a specific workspace, but the token did not include an chatgpt_account_id claim.".to_string());
     };

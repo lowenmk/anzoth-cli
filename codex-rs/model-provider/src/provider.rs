@@ -659,6 +659,56 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn anzoth_provider_returns_chatgpt_account_state_with_email_from_access_token() {
+        let codex_home = std::env::temp_dir().join(format!(
+            "codex-model-provider-email-{}-{}",
+            std::process::id(),
+            "access-token"
+        ));
+        std::fs::create_dir_all(&codex_home).expect("temp codex home should be creatable");
+        let auth_json = serde_json::json!({
+            "auth_mode": "chatgpt",
+            "tokens": {
+                "id_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2F1dGguYW56b3RoLmNvbS9yZWFsbXMvYW56b3RoIiwiYXVkIjoiYW56b3RoLWNsaSIsImF6cCI6ImFuem90aC1jbGkiLCJzdWIiOiJzdWJqZWN0LTEyMyJ9.sig",
+                "access_token": "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJpc3MiOiJodHRwczovL2F1dGguYW56b3RoLmNvbS9yZWFsbXMvYW56b3RoIiwiYXVkIjoiYW56b3RoLWNsaSIsImF6cCI6ImFuem90aC1jbGkiLCJzdWIiOiJzdWJqZWN0LTEyMyIsImVtYWlsIjoidXNlckBleGFtcGxlLmNvbSJ9.sig",
+                "refresh_token": "refresh-token",
+            },
+            "last_refresh": "2026-08-23T00:00:00Z",
+        });
+        std::fs::write(
+            codex_home.join("auth.json"),
+            serde_json::to_string_pretty(&auth_json).expect("auth json should serialize"),
+        )
+        .expect("auth.json should write");
+        let auth = AuthManager::new(
+            codex_home.clone(),
+            /*enable_codex_api_key_env*/ false,
+            codex_login::AuthCredentialsStoreMode::File,
+            /*forced_chatgpt_workspace_id*/ None,
+            /*chatgpt_base_url*/ None,
+            codex_login::AuthKeyringBackendKind::default(),
+            /*auth_route_config*/ None,
+        )
+        .await;
+
+        let provider = create_model_provider(
+            ModelProviderInfo::create_anzoth_provider(/*base_url*/ None),
+            Some(std::sync::Arc::new(auth)),
+        );
+
+        assert_eq!(
+            provider.account_state(),
+            Ok(ProviderAccountState {
+                account: Some(ProviderAccount::Chatgpt {
+                    email: Some("user@example.com".to_string()),
+                    plan_type: PlanType::Unknown,
+                }),
+                requires_openai_auth: true,
+            })
+        );
+    }
+
     #[test]
     fn openai_provider_rejects_bedrock_api_key_account_state() {
         let provider = create_model_provider(

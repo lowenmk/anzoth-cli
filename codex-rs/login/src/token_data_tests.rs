@@ -124,6 +124,7 @@ fn id_token_info_parses_generic_oidc_claims() {
         "aud": "anzoth-cli",
         "azp": "anzoth-cli",
         "sub": "user-123",
+        "email": "user@example.com",
     }));
 
     let info = parse_chatgpt_jwt_claims(&fake_jwt).expect("should parse");
@@ -137,6 +138,7 @@ fn id_token_info_parses_generic_oidc_claims() {
     );
     assert_eq!(info.authorized_party.as_deref(), Some("anzoth-cli"));
     assert_eq!(info.subject.as_deref(), Some("user-123"));
+    assert_eq!(info.email.as_deref(), Some("user@example.com"));
     assert!(info.is_anzoth_issuer());
 }
 

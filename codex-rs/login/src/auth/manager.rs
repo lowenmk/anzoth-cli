@@ -564,7 +564,7 @@ impl CodexAuth {
             Self::Headers(_) => None,
             Self::AgentIdentity(auth) => auth.email().map(str::to_string),
             Self::PersonalAccessToken(auth) => auth.email().map(str::to_string),
-            _ => self.get_current_token_data().and_then(|t| t.id_token.email),
+            _ => self.get_current_token_data().and_then(|t| token_email(&t)),
         }
     }
 
@@ -803,12 +803,20 @@ impl ManagedChatGptAgentIdentityBinding {
         Some(Self {
             account_id,
             chatgpt_user_id,
-            email: token_data.id_token.email.clone(),
+            email: token_email(&token_data),
             plan_type: auth.account_plan_type().unwrap_or(AccountPlanType::Unknown),
             chatgpt_account_is_fedramp: auth.is_fedramp_account(),
             access_token: token_data.access_token,
         })
     }
+}
+
+fn token_email(token_data: &TokenData) -> Option<String> {
+    token_data.id_token.email.clone().or_else(|| {
+        parse_chatgpt_jwt_claims(&token_data.access_token)
+            .ok()?
+            .email
+    })
 }
 
 impl ChatgptAuth {

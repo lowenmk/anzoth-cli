@@ -1213,6 +1213,62 @@ async fn anzoth_oidc_auth_supports_anzoth_apps_but_not_codex_apps() {
     assert_eq!(auth.get_chatgpt_user_id().as_deref(), Some("subject-123"));
 }
 
+#[tokio::test]
+async fn anzoth_oidc_auth_uses_access_token_email_when_id_token_lacks_it() -> anyhow::Result<()> {
+    let codex_home = tempdir()?;
+    let id_token = fake_oidc_jwt(serde_json::json!({
+        "iss": "https://auth.anzoth.com/realms/anzoth",
+        "aud": "anzoth-cli",
+        "azp": "anzoth-cli",
+        "sub": "subject-123",
+    }))?;
+    let access_token = fake_oidc_jwt(serde_json::json!({
+        "iss": "https://auth.anzoth.com/realms/anzoth",
+        "aud": "anzoth-cli",
+        "azp": "anzoth-cli",
+        "sub": "subject-123",
+        "email": "user@example.com",
+    }))?;
+    save_auth(
+        codex_home.path(),
+        &AuthDotJson {
+            auth_mode: Some(AuthMode::Chatgpt),
+            openai_api_key: None,
+            tokens: Some(TokenData {
+                id_token: crate::token_data::parse_chatgpt_jwt_claims(&id_token)?,
+                access_token,
+                refresh_token: "refresh-token".to_string(),
+                account_id: None,
+            }),
+            last_refresh: Some(Utc::now()),
+            agent_identity: None,
+            personal_access_token: None,
+            bedrock_api_key: None,
+        },
+        AuthCredentialsStoreMode::File,
+        AuthKeyringBackendKind::Direct,
+    )?;
+
+    let auth = super::load_auth(
+        codex_home.path(),
+        /*enable_codex_api_key_env*/ false,
+        AuthCredentialsStoreMode::File,
+        /*forced_chatgpt_workspace_id*/ None,
+        /*chatgpt_base_url*/ None,
+        AuthKeyringBackendKind::Direct,
+        /*agent_identity_authapi_base_url*/ None,
+        /*auth_route_config*/ None,
+    )
+    .await?
+    .expect("auth should load");
+
+    assert_eq!(
+        auth.get_account_email().as_deref(),
+        Some("user@example.com")
+    );
+    Ok(())
+}
+
 struct ProviderAuthScript {
     tempdir: TempDir,
     command: String,
@@ -1394,6 +1450,24 @@ fn fake_jwt_for_auth_file_params(params: &AuthFileParams) -> std::io::Result<Str
         "https://api.openai.com/auth": auth_payload,
     });
     let b64 = |b: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
+    let header_b64 = b64(&serde_json::to_vec(&header)?);
+    let payload_b64 = b64(&serde_json::to_vec(&payload)?);
+    let signature_b64 = b64(b"sig");
+    Ok(format!("{header_b64}.{payload_b64}.{signature_b64}"))
+}
+
+fn fake_oidc_jwt(payload: serde_json::Value) -> std::io::Result<String> {
+    #[derive(Serialize)]
+    struct Header {
+        alg: &'static str,
+        typ: &'static str,
+    }
+
+    let header = Header {
+        alg: "none",
+        typ: "JWT",
+    };
+    let b64 = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
     let header_b64 = b64(&serde_json::to_vec(&header)?);
     let payload_b64 = b64(&serde_json::to_vec(&payload)?);
     let signature_b64 = b64(b"sig");
