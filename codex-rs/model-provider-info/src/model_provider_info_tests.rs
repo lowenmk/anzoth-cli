@@ -378,6 +378,31 @@ fn test_merge_configured_model_providers_adds_custom_provider() {
 }
 
 #[test]
+fn test_merge_configured_model_providers_normalizes_anzoth_requires_openai_auth() {
+    let configured_model_providers = std::collections::HashMap::from([(
+        ANZOTH_RESPONSES_PROVIDER_ID.to_string(),
+        ModelProviderInfo {
+            name: ANZOTH_RESPONSES_PROVIDER_NAME.to_string(),
+            base_url: Some(ANZOTH_DEFAULT_BASE_URL.to_string()),
+            env_key: Some("ANZOTH_API_KEY".to_string()),
+            requires_openai_auth: false,
+            ..ModelProviderInfo::default()
+        },
+    )]);
+
+    let merged = merge_configured_model_providers(
+        built_in_model_providers(/*openai_base_url*/ None),
+        configured_model_providers,
+    )
+    .expect("Anzoth provider merge should succeed");
+
+    let provider = merged
+        .get(ANZOTH_RESPONSES_PROVIDER_ID)
+        .expect("Anzoth compatibility provider should be present");
+    assert!(provider.requires_openai_auth);
+}
+
+#[test]
 fn test_merge_configured_model_providers_applies_amazon_bedrock_profile_override() {
     let configured_model_providers = std::collections::HashMap::from([(
         AMAZON_BEDROCK_PROVIDER_ID.to_string(),

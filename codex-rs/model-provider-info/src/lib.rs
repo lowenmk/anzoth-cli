@@ -37,6 +37,8 @@ const OPENAI_ACTOR_AUTHORIZATION_HEADER: &str = "x-openai-actor-authorization";
 pub const OPENAI_PROVIDER_ID: &str = "openai";
 pub const CHATGPT_CODEX_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 pub const ANZOTH_PROVIDER_ID: &str = "anzoth";
+pub const ANZOTH_RESPONSES_PROVIDER_ID: &str = "anzoth-responses";
+pub const ANZOTH_RESPONSES_PROVIDER_NAME: &str = "Anzoth Responses";
 pub const ANZOTH_DEFAULT_BASE_URL: &str = "https://api.anzoth.com/v1";
 const AMAZON_BEDROCK_PROVIDER_NAME: &str = "Amazon Bedrock";
 pub const AMAZON_BEDROCK_PROVIDER_ID: &str = "amazon-bedrock";
@@ -421,7 +423,7 @@ impl ModelProviderInfo {
             stream_max_retries: None,
             stream_idle_timeout_ms: None,
             websocket_connect_timeout_ms: None,
-            requires_openai_auth: false,
+            requires_openai_auth: true,
             supports_websockets: false,
         }
     }
@@ -442,6 +444,14 @@ impl ModelProviderInfo {
 
     pub fn is_amazon_bedrock(&self) -> bool {
         self.name == AMAZON_BEDROCK_PROVIDER_NAME
+    }
+
+    pub fn is_anzoth_provider(&self) -> bool {
+        self.base_url
+            .as_deref()
+            .map(|base_url| base_url.trim_end_matches('/'))
+            .is_some_and(|base_url| base_url == ANZOTH_DEFAULT_BASE_URL)
+            && (self.name == "Anzoth" || self.name == ANZOTH_RESPONSES_PROVIDER_NAME)
     }
 
     pub fn supports_remote_compaction(&self) -> bool {
@@ -502,6 +512,12 @@ pub fn merge_configured_model_providers(
     configured_model_providers: HashMap<String, ModelProviderInfo>,
 ) -> Result<HashMap<String, ModelProviderInfo>, String> {
     for (key, mut provider) in configured_model_providers {
+        if key == ANZOTH_PROVIDER_ID
+            || key == ANZOTH_RESPONSES_PROVIDER_ID
+            || provider.is_anzoth_provider()
+        {
+            provider.requires_openai_auth = true;
+        }
         if key == AMAZON_BEDROCK_PROVIDER_ID {
             let aws_override = provider.aws.take();
             if provider != ModelProviderInfo::default() {
