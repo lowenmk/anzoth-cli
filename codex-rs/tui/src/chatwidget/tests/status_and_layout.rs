@@ -1930,6 +1930,34 @@ fn assert_no_owner_nudge_or_rate_limit_refresh(
 }
 
 #[tokio::test]
+async fn streaming_agent_message_updates_active_cell_immediately() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.on_task_started();
+
+    handle_agent_message_delta(&mut chat, "Hel");
+
+    let first = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .expect("active assistant transcript lines after first delta");
+    assert!(
+        lines_to_single_string(&first).contains("Hel"),
+        "expected the first delta to be visible immediately: {first:?}"
+    );
+
+    handle_agent_message_delta(&mut chat, "lo, I can help");
+
+    let second = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .expect("active assistant transcript lines after second delta");
+    let combined = lines_to_single_string(&second);
+    assert!(
+        combined.contains("Hello, I can help"),
+        "expected the active assistant text to keep growing: {combined:?}"
+    );
+}
+
+#[tokio::test]
 async fn streaming_final_answer_keeps_task_running_state() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());

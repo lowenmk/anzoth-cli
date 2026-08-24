@@ -438,7 +438,18 @@ impl ChatWidget {
 
     pub(super) fn sync_active_stream_tail(&mut self) {
         if let Some(controller) = self.stream_controller.as_ref() {
-            let tail_lines = controller.current_tail_lines();
+            let tail_lines = if controller.has_live_tail() {
+                controller.current_tail_lines()
+            } else {
+                let pending_source = controller.pending_source();
+                if pending_source.is_empty() {
+                    Vec::new()
+                } else {
+                    crate::terminal_hyperlinks::plain_hyperlink_lines(
+                        crate::history_cell::raw_lines_from_source(pending_source),
+                    )
+                }
+            };
             if tail_lines.is_empty() {
                 self.clear_active_stream_tail();
                 return;

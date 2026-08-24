@@ -73,6 +73,14 @@ impl MarkdownStreamCollector {
         }
     }
 
+    /// Return the uncommitted tail of the buffered source.
+    ///
+    /// Callers use this to render an immediate, lightweight preview of the
+    /// active stream without waiting for a newline commit boundary.
+    pub fn pending_source(&self) -> &str {
+        &self.buffer[self.committed_source_len..]
+    }
+
     /// Append a raw streaming delta to the internal source buffer.
     pub fn push_delta(&mut self, delta: &str) {
         tracing::trace!("push_delta: {delta:?}");

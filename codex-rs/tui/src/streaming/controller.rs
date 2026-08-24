@@ -217,6 +217,11 @@ impl StreamCore {
     }
 
     #[inline]
+    fn pending_source(&self) -> &str {
+        self.state.collector.pending_source()
+    }
+
+    #[inline]
     fn has_tail(&self) -> bool {
         self.enqueued_stable_len < self.rendered_lines.len()
     }
@@ -525,6 +530,11 @@ impl StreamController {
     #[inline]
     pub(crate) fn current_tail_lines(&self) -> Vec<HyperlinkLine> {
         self.core.current_tail_lines()
+    }
+
+    #[inline]
+    pub(crate) fn pending_source(&self) -> &str {
+        self.core.pending_source()
     }
 
     #[inline]
