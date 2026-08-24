@@ -13,12 +13,18 @@ Behavior:
 - normal public-release workflow
 - production staging directories
 
-Local Windows iteration:
-- cargo build --profile fast-release -p codex-cli --bin anzoth
+Fast development scripts:
+- build-win-x86_64-fast.bat
+- build-linux-x86_64-fast.bat
+- build-macos-x86_64-fast.bat
+- build-macos-arm64-on-intel-fast.bat
+- build-macos-arm64-on-m1-fast.bat
 
 Behavior:
 - optimized Cargo fast-release build
 - release profile inheritance with incremental compilation enabled
+- separate Cargo fast-release target tree
+- separate fast staging directories
 - no change to official production release builds
 
 Debug-symbol scripts:
@@ -37,6 +43,7 @@ Behavior:
 
 Notes:
 - Windows production uses -j 20
+- Windows fast development also uses -j 20
 - Linux/macOS use Cargo host-default parallelism unless otherwise specified
 - Codex must not execute these scripts
 - release/debug compilation is performed manually in a visible terminal
