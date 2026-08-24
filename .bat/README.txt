@@ -13,6 +13,14 @@ Behavior:
 - normal public-release workflow
 - production staging directories
 
+Local Windows iteration:
+- cargo build --profile fast-release -p codex-cli --bin anzoth
+
+Behavior:
+- optimized Cargo fast-release build
+- release profile inheritance with incremental compilation enabled
+- no change to official production release builds
+
 Debug-symbol scripts:
 - build-win-x86_64-debug.bat
 - build-linux-x86_64-debug.bat
