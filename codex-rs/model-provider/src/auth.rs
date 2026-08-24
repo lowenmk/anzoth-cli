@@ -124,17 +124,23 @@ impl AuthProvider for HeaderAuthProvider {
 struct AuthManagerAuthProvider {
     auth_manager: Arc<AuthManager>,
     // Startup auth is only the account-scoped identity anchor. Request
-    // headers always come from the current AuthManager snapshot below.
+    // headers resolve the current AuthManager state when a Tokio runtime is
+    // available, so the provider follows refreshes without crossing accounts.
     expected_auth: CodexAuth,
+}
+
+impl AuthManagerAuthProvider {
+    fn current_auth(&self) -> Option<CodexAuth> {
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(self.auth_manager.auth())),
+            Err(_) => self.auth_manager.auth_cached(),
+        }
+    }
 }
 
 impl AuthProvider for AuthManagerAuthProvider {
     fn add_auth_headers(&self, headers: &mut HeaderMap) {
-        let Some(auth) = self
-            .auth_manager
-            .auth_cached()
-            .filter(CodexAuth::uses_codex_backend)
-        else {
+        let Some(auth) = self.current_auth().filter(CodexAuth::uses_codex_backend) else {
             return;
         };
         // The caller's account-scoped state was built for the expected
