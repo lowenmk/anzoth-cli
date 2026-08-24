@@ -105,6 +105,9 @@ pretty_assertions = { workspace = true }
 sqlx = { workspace = true }
 wiremock = { workspace = true }
 
+[build-dependencies]
+embed-resource = "3.0"
+
 [package.metadata.cargo-shear]
 # These Rust sources are intentionally Bazel-only macrobenchmarks rather than
 # Cargo targets.
