@@ -49,6 +49,7 @@ pub use crate::auth::storage::AuthDotJson;
 pub use crate::auth::storage::AuthKeyringBackendKind;
 use crate::auth::storage::AuthStorageBackend;
 use crate::auth::storage::create_auth_storage;
+use crate::auth::storage::get_auth_refresh_lock_file;
 use crate::auth::util::try_parse_error_message;
 use crate::default_client::create_client;
 use crate::default_client::create_default_auth_client;
@@ -63,6 +64,7 @@ use codex_protocol::auth::PlanType as InternalPlanType;
 use codex_protocol::auth::RefreshTokenFailedError;
 use codex_protocol::auth::RefreshTokenFailedReason;
 use codex_protocol::protocol::SessionSource;
+use fd_lock::RwLock;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -2394,33 +2396,38 @@ impl AuthManager {
                 REFRESH_TOKEN_UNKNOWN_MESSAGE.to_string(),
             ))
         })?;
-        let auth_before_reload = self.auth_cached();
-        if auth_before_reload
-            .as_ref()
-            .is_some_and(|auth| auth.is_api_key_auth() || auth.is_personal_access_token_auth())
-        {
-            return Ok(());
-        }
-        let expected_account_id = auth_before_reload
-            .as_ref()
-            .and_then(CodexAuth::get_account_id);
+        self.with_cross_process_refresh_lock(|| async {
+            let auth_before_reload = self.auth_cached();
+            if auth_before_reload
+                .as_ref()
+                .is_some_and(|auth| auth.is_api_key_auth() || auth.is_personal_access_token_auth())
+            {
+                return Ok(());
+            }
+            let expected_account_id = auth_before_reload
+                .as_ref()
+                .and_then(CodexAuth::get_account_id);
 
-        match self
-            .reload_if_account_id_matches(expected_account_id.as_deref())
-            .await
-        {
-            ReloadOutcome::ReloadedChanged => {
-                tracing::info!("Skipping token refresh because auth changed after guarded reload.");
-                Ok(())
+            match self
+                .reload_if_account_id_matches(expected_account_id.as_deref())
+                .await
+            {
+                ReloadOutcome::ReloadedChanged => {
+                    tracing::info!(
+                        "Skipping token refresh because auth changed after guarded reload."
+                    );
+                    Ok(())
+                }
+                ReloadOutcome::ReloadedNoChange => self.refresh_token_from_authority_impl().await,
+                ReloadOutcome::Skipped => {
+                    Err(RefreshTokenError::Permanent(RefreshTokenFailedError::new(
+                        RefreshTokenFailedReason::Other,
+                        REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE.to_string(),
+                    )))
+                }
             }
-            ReloadOutcome::ReloadedNoChange => self.refresh_token_from_authority_impl().await,
-            ReloadOutcome::Skipped => {
-                Err(RefreshTokenError::Permanent(RefreshTokenFailedError::new(
-                    RefreshTokenFailedReason::Other,
-                    REFRESH_TOKEN_ACCOUNT_MISMATCH_MESSAGE.to_string(),
-                )))
-            }
-        }
+        })
+        .await
     }
 
     /// Attempt to refresh the current auth token from the authority that issued
@@ -2433,7 +2440,38 @@ impl AuthManager {
                 REFRESH_TOKEN_UNKNOWN_MESSAGE.to_string(),
             ))
         })?;
-        self.refresh_token_from_authority_impl().await
+        self.with_cross_process_refresh_lock(|| async {
+            self.refresh_token_from_authority_impl().await
+        })
+        .await
+    }
+
+    async fn with_cross_process_refresh_lock<T, F, Fut>(
+        &self,
+        action: F,
+    ) -> Result<T, RefreshTokenError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: Future<Output = Result<T, RefreshTokenError>>,
+    {
+        let lock_path = get_auth_refresh_lock_file(&self.codex_home);
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent).map_err(RefreshTokenError::Transient)?;
+        }
+        let lock_file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(&lock_path)
+            .map_err(RefreshTokenError::Transient)?;
+        let mut lock = RwLock::new(lock_file);
+        let _cross_process_refresh_guard = lock.write().map_err(|err| {
+            RefreshTokenError::Transient(std::io::Error::other(format!(
+                "failed to lock cross-process auth refresh file {}: {err}",
+                lock_path.display()
+            )))
+        })?;
+        action().await
     }
 
     async fn refresh_token_from_authority_impl(&self) -> Result<(), RefreshTokenError> {

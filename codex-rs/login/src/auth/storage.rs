@@ -151,6 +151,10 @@ pub(super) fn get_auth_file(codex_home: &Path) -> PathBuf {
     codex_home.join("auth.json")
 }
 
+pub(super) fn get_auth_refresh_lock_file(codex_home: &Path) -> PathBuf {
+    codex_home.join("auth-refresh.lock")
+}
+
 pub(super) fn delete_file_if_exists(codex_home: &Path) -> std::io::Result<bool> {
     let auth_file = get_auth_file(codex_home);
     match std::fs::remove_file(&auth_file) {
