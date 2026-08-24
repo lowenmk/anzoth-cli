@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use base64::Engine;
 use codex_agent_identity::AgentIdentityKey;
 use codex_agent_identity::authorization_header_for_agent_task;
 use codex_api::AgentIdentityTelemetry;
@@ -124,8 +125,10 @@ impl AuthProvider for HeaderAuthProvider {
 struct AuthManagerAuthProvider {
     auth_manager: Arc<AuthManager>,
     // Startup auth is only the account-scoped identity anchor. Request
-    // headers resolve the current AuthManager state when a Tokio runtime is
-    // available, so the provider follows refreshes without crossing accounts.
+    // headers resolve the current AuthManager state via the active Tokio
+    // runtime when available, or via a temporary current-thread runtime when
+    // called from a non-runtime thread, so the provider follows refreshes
+    // without crossing accounts.
     expected_auth: CodexAuth,
 }
 
@@ -133,7 +136,11 @@ impl AuthManagerAuthProvider {
     fn current_auth(&self) -> Option<CodexAuth> {
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => tokio::task::block_in_place(|| handle.block_on(self.auth_manager.auth())),
-            Err(_) => self.auth_manager.auth_cached(),
+            Err(_) => tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .ok()
+                .and_then(|runtime| runtime.block_on(self.auth_manager.auth())),
         }
     }
 }
@@ -327,6 +334,7 @@ pub fn auth_provider_from_auth_manager(
 
 #[cfg(test)]
 mod tests {
+    use chrono::Utc;
     use codex_agent_identity::generate_agent_key_material;
     use codex_login::AuthCredentialsStoreMode;
     use codex_login::AuthKeyringBackendKind;
@@ -358,6 +366,15 @@ mod tests {
     static ENV_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
     const ANZOTH_API_KEY_ENV_VAR: &str = "ANZOTH_API_KEY";
     const TEST_CHATGPT_ID_TOKEN: &str = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS9hdXRoIjp7ImNoYXRncHRfdXNlcl9pZCI6InVzZXItMTIzNDUiLCJ1c2VyX2lkIjoidXNlci0xMjM0NSIsImNoYXRncHRfcGxhbl90eXBlIjoicHJvIiwiY2hhdGdwdF9hY2NvdW50X2lkIjoiYWNjb3VudC0xMjMifX0.c2ln";
+
+    fn fake_jwt(payload: serde_json::Value) -> String {
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes);
+        format!(
+            "{}.{}.sig",
+            encode(br#"{"alg":"none","typ":"JWT"}"#),
+            encode(payload.to_string().as_bytes())
+        )
+    }
 
     fn env_test_lock() -> std::sync::MutexGuard<'static, ()> {
         ENV_TEST_LOCK
@@ -479,6 +496,40 @@ mod tests {
             auth.clone(),
             agent_identity_authapi_base_url,
         );
+        (codex_home, auth_manager, auth)
+    }
+
+    async fn expired_chatgpt_auth_manager() -> (PathBuf, Arc<AuthManager>, CodexAuth) {
+        let codex_home = test_codex_home();
+        let expired_access_token = fake_jwt(serde_json::json!({
+            "exp": 1_500_000_000i64,
+            "iat": 1_400_000_000i64,
+        }));
+        let auth_json = serde_json::json!({
+            "tokens": {
+                "id_token": TEST_CHATGPT_ID_TOKEN,
+                "access_token": expired_access_token,
+                "refresh_token": "test-refresh-token",
+                "account_id": "account-123"
+            },
+            "last_refresh": "2099-01-01T00:00:00Z"
+        });
+        std::fs::write(
+            codex_home.join("auth.json"),
+            serde_json::to_string_pretty(&auth_json).expect("serialize auth.json"),
+        )
+        .expect("write auth.json");
+        let auth_manager = AuthManager::shared(
+            codex_home.clone(),
+            /*enable_codex_api_key_env*/ false,
+            AuthCredentialsStoreMode::File,
+            /*forced_chatgpt_workspace_id*/ None,
+            /*chatgpt_base_url*/ None,
+            AuthKeyringBackendKind::default(),
+            /*auth_route_config*/ None,
+        )
+        .await;
+        let auth = auth_manager.auth_cached().expect("auth should load");
         (codex_home, auth_manager, auth)
     }
 
@@ -626,6 +677,196 @@ mod tests {
         auth_manager.reload().await;
 
         assert!(provider.to_auth_headers().is_empty());
+    }
+
+    #[tokio::test]
+    async fn auth_manager_provider_refreshes_expired_auth_without_runtime_handle() {
+        let server = MockServer::start().await;
+        let refreshed_access_token = fake_jwt(serde_json::json!({
+            "exp": 4_000_000_000i64,
+            "iat": 3_999_999_900i64,
+        }));
+        let refreshed_access_token_expected = refreshed_access_token.clone();
+        let refreshed_refresh_token = "refreshed-refresh-token";
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": refreshed_access_token_expected.clone(),
+                "refresh_token": refreshed_refresh_token,
+                "id_token": TEST_CHATGPT_ID_TOKEN,
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "scope": "openid offline_access email profile"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let _lock = env_test_lock();
+        let _refresh_guard = EnvVarGuard::set(
+            codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
+            &format!("{}/token", server.uri()),
+        );
+        let (_codex_home, auth_manager, auth) = expired_chatgpt_auth_manager().await;
+        let provider = auth_provider_from_auth_manager(Arc::clone(&auth_manager), &auth);
+
+        let headers = std::thread::spawn(move || provider.to_auth_headers())
+            .join()
+            .expect("provider should resolve off runtime");
+
+        assert_eq!(
+            headers.get(AUTHORIZATION),
+            Some(
+                &HeaderValue::from_str(&format!("Bearer {}", refreshed_access_token_expected))
+                    .expect("valid header value")
+            )
+        );
+        assert_eq!(
+            auth_manager
+                .auth_cached()
+                .and_then(|auth| auth.get_token_data().ok())
+                .map(|tokens| tokens.access_token),
+            Some(refreshed_access_token)
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_manager_provider_keeps_valid_auth_without_runtime_handle() {
+        let server = MockServer::start().await;
+        let valid_access_token = fake_jwt(serde_json::json!({
+            "exp": 4_000_000_000i64,
+            "iat": 3_999_999_900i64,
+        }));
+        let codex_home = test_codex_home();
+        let auth_json = serde_json::json!({
+            "tokens": {
+                "id_token": TEST_CHATGPT_ID_TOKEN,
+                "access_token": valid_access_token,
+                "refresh_token": "test-refresh-token",
+                "account_id": "account-123"
+            },
+            "last_refresh": "2099-01-01T00:00:00Z"
+        });
+        std::fs::write(
+            codex_home.join("auth.json"),
+            serde_json::to_string_pretty(&auth_json).expect("serialize auth.json"),
+        )
+        .expect("write auth.json");
+        let auth_manager = AuthManager::shared(
+            codex_home.clone(),
+            /*enable_codex_api_key_env*/ false,
+            AuthCredentialsStoreMode::File,
+            /*forced_chatgpt_workspace_id*/ None,
+            /*chatgpt_base_url*/ None,
+            AuthKeyringBackendKind::default(),
+            /*auth_route_config*/ None,
+        )
+        .await;
+        let auth = auth_manager.auth_cached().expect("auth should load");
+        let provider = auth_provider_from_auth_manager(Arc::clone(&auth_manager), &auth);
+
+        let _lock = env_test_lock();
+        let _refresh_guard = EnvVarGuard::set(
+            codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
+            &format!("{}/token", server.uri()),
+        );
+        let headers = std::thread::spawn(move || provider.to_auth_headers())
+            .join()
+            .expect("provider should resolve off runtime");
+
+        assert_eq!(
+            headers.get(AUTHORIZATION),
+            Some(
+                &HeaderValue::from_str(&format!("Bearer {}", valid_access_token))
+                    .expect("valid header value")
+            )
+        );
+        assert!(
+            server
+                .received_requests()
+                .await
+                .expect("requests")
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_manager_provider_refreshes_near_expiry_auth_without_runtime_handle() {
+        let server = MockServer::start().await;
+        let refreshed_access_token = fake_jwt(serde_json::json!({
+            "exp": 4_000_000_100i64,
+            "iat": 4_000_000_000i64,
+        }));
+        let refreshed_access_token_expected = refreshed_access_token.clone();
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "access_token": refreshed_access_token_expected.clone(),
+                "refresh_token": "refreshed-refresh-token",
+                "id_token": TEST_CHATGPT_ID_TOKEN,
+                "token_type": "Bearer",
+                "expires_in": 300,
+                "scope": "openid offline_access email profile"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let codex_home = test_codex_home();
+        let near_expiry_access_token = fake_jwt(serde_json::json!({
+            "exp": Utc::now().timestamp() + 60,
+            "iat": Utc::now().timestamp() - 60,
+        }));
+        let auth_json = serde_json::json!({
+            "tokens": {
+                "id_token": TEST_CHATGPT_ID_TOKEN,
+                "access_token": near_expiry_access_token,
+                "refresh_token": "test-refresh-token",
+                "account_id": "account-123"
+            },
+            "last_refresh": "2099-01-01T00:00:00Z"
+        });
+        std::fs::write(
+            codex_home.join("auth.json"),
+            serde_json::to_string_pretty(&auth_json).expect("serialize auth.json"),
+        )
+        .expect("write auth.json");
+        let auth_manager = AuthManager::shared(
+            codex_home.clone(),
+            /*enable_codex_api_key_env*/ false,
+            AuthCredentialsStoreMode::File,
+            /*forced_chatgpt_workspace_id*/ None,
+            /*chatgpt_base_url*/ None,
+            AuthKeyringBackendKind::default(),
+            /*auth_route_config*/ None,
+        )
+        .await;
+        let auth = auth_manager.auth_cached().expect("auth should load");
+        let provider = auth_provider_from_auth_manager(Arc::clone(&auth_manager), &auth);
+
+        let _lock = env_test_lock();
+        let _refresh_guard = EnvVarGuard::set(
+            codex_login::REFRESH_TOKEN_URL_OVERRIDE_ENV_VAR,
+            &format!("{}/token", server.uri()),
+        );
+        let headers = std::thread::spawn(move || provider.to_auth_headers())
+            .join()
+            .expect("provider should resolve off runtime");
+
+        assert_eq!(
+            headers.get(AUTHORIZATION),
+            Some(
+                &HeaderValue::from_str(&format!("Bearer {}", refreshed_access_token_expected))
+                    .expect("valid header value")
+            )
+        );
+        assert_eq!(
+            auth_manager
+                .auth_cached()
+                .and_then(|auth| auth.get_token_data().ok())
+                .map(|tokens| tokens.access_token),
+            Some(refreshed_access_token)
+        );
     }
 
     #[tokio::test]
