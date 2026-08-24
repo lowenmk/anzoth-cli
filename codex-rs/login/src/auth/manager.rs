@@ -64,7 +64,7 @@ use codex_protocol::auth::PlanType as InternalPlanType;
 use codex_protocol::auth::RefreshTokenFailedError;
 use codex_protocol::auth::RefreshTokenFailedReason;
 use codex_protocol::protocol::SessionSource;
-use fd_lock::RwLock;
+use fd_lock::RwLock as FileRwLock;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -2464,7 +2464,7 @@ impl AuthManager {
             .create(true)
             .open(&lock_path)
             .map_err(RefreshTokenError::Transient)?;
-        let mut lock = RwLock::new(lock_file);
+        let lock = FileRwLock::new(lock_file);
         let _cross_process_refresh_guard = lock.write().map_err(|err| {
             RefreshTokenError::Transient(std::io::Error::other(format!(
                 "failed to lock cross-process auth refresh file {}: {err}",
