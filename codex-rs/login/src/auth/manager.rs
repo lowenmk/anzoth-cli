@@ -2464,7 +2464,7 @@ impl AuthManager {
             .create(true)
             .open(&lock_path)
             .map_err(RefreshTokenError::Transient)?;
-        let lock = FileRwLock::new(lock_file);
+        let mut lock = FileRwLock::new(lock_file);
         let _cross_process_refresh_guard = lock.write().map_err(|err| {
             RefreshTokenError::Transient(std::io::Error::other(format!(
                 "failed to lock cross-process auth refresh file {}: {err}",
