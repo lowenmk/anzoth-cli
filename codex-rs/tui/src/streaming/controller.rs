@@ -222,6 +222,18 @@ impl StreamCore {
     }
 
     #[inline]
+    fn full_source(&self) -> String {
+        let pending_source = self.pending_source();
+        if pending_source.is_empty() {
+            return self.raw_source.clone();
+        }
+
+        let mut source = self.raw_source.clone();
+        source.push_str(pending_source);
+        source
+    }
+
+    #[inline]
     fn has_tail(&self) -> bool {
         self.enqueued_stable_len < self.rendered_lines.len()
     }
@@ -535,6 +547,11 @@ impl StreamController {
     #[inline]
     pub(crate) fn pending_source(&self) -> &str {
         self.core.pending_source()
+    }
+
+    #[inline]
+    pub(crate) fn full_source(&self) -> String {
+        self.core.full_source()
     }
 
     #[inline]

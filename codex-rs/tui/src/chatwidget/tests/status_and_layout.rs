@@ -1958,6 +1958,39 @@ async fn streaming_agent_message_updates_active_cell_immediately() {
 }
 
 #[tokio::test]
+async fn streaming_agent_message_updates_full_source_across_newline_boundary() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.on_task_started();
+
+    handle_agent_message_delta(&mut chat, "Hello\n");
+
+    let first = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .expect("active assistant transcript lines after newline delta");
+    let first_combined = lines_to_single_string(&first);
+    assert!(
+        first_combined.contains("Hello"),
+        "expected the committed prefix to remain visible in the active assistant text: {first_combined:?}"
+    );
+
+    handle_agent_message_delta(&mut chat, "world");
+
+    let second = chat
+        .active_cell_transcript_lines(/*width*/ 80)
+        .expect("active assistant transcript lines after tail delta");
+    let second_combined = lines_to_single_string(&second);
+    assert!(
+        second_combined.contains("Hello"),
+        "expected the active assistant text to keep the full accumulated prefix: {second_combined:?}"
+    );
+    assert!(
+        second_combined.contains("world"),
+        "expected the active assistant text to include the latest delta: {second_combined:?}"
+    );
+}
+
+#[tokio::test]
 async fn streaming_final_answer_keeps_task_running_state() {
     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
     chat.thread_id = Some(ThreadId::new());
@@ -1987,6 +2020,33 @@ async fn streaming_final_answer_keeps_task_running_state() {
         other => panic!("expected Op::Interrupt, got {other:?}"),
     }
     assert!(!chat.bottom_pane.quit_shortcut_hint_visible());
+}
+
+#[tokio::test]
+async fn streaming_agent_message_finalization_replaces_active_raw_response() {
+    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+    chat.thread_id = Some(ThreadId::new());
+    chat.on_task_started();
+
+    handle_agent_message_delta(&mut chat, "Hello\n");
+    handle_agent_message_delta(&mut chat, "world");
+    assert!(
+        chat.active_cell_transcript_lines(/*width*/ 80).is_some(),
+        "expected live assistant output before finalization"
+    );
+
+    complete_assistant_message(
+        &mut chat,
+        "msg-final",
+        "Hello\nworld",
+        Some(MessagePhase::FinalAnswer),
+    );
+    drain_insert_history(&mut rx);
+
+    assert!(
+        chat.active_cell_transcript_lines(/*width*/ 80).is_none(),
+        "expected the active raw response to be replaced on finalization"
+    );
 }
 
 #[tokio::test]
