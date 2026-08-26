@@ -221,10 +221,10 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1' {
-        $RemoteHost = 'mac'
+        $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
         Write-Host 'PRODUCTION RELEASE BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo PRODUCTION RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; export CARGO_PROFILE_RELEASE_DEBUG=0; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; strip codex-rs/target/release/anzoth; ./codex-rs/target/release/anzoth --version; ls -lh codex-rs/target/release/anzoth; shasum -a 256 codex-rs/target/release/anzoth; file codex-rs/target/release/anzoth; lipo -info codex-rs/target/release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo PRODUCTION RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; export CARGO_PROFILE_RELEASE_DEBUG=0; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; strip codex-rs/target/release/anzoth; ./codex-rs/target/release/anzoth --version; ls -lh codex-rs/target/release/anzoth; shasum -a 256 codex-rs/target/release/anzoth; file codex-rs/target/release/anzoth; lipo -info codex-rs/target/release/anzoth; if ! file codex-rs/target/release/anzoth | grep -q "arm64"; then echo "ERROR: macOS ARM64 build did not resolve to arm64." >&2; exit 1; fi; if file codex-rs/target/release/anzoth | grep -q "x86_64"; then echo "ERROR: macOS ARM64 build resolved to x86_64." >&2; exit 1; fi; if ! lipo -info codex-rs/target/release/anzoth | grep -q "arm64"; then echo "ERROR: lipo did not report arm64 for macOS ARM64 build." >&2; exit 1; fi'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/release/anzoth" $dest } 'scp build artifact'
@@ -233,10 +233,10 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1-fast' {
-        $RemoteHost = 'mac'
+        $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
         Write-Host 'FAST DEVELOPMENT BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo FAST DEVELOPMENT BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"; export PATH="$HOME/.cargo/bin:$PATH"; command -v cargo; cargo build --profile fast-release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; ./codex-rs/target/fast-release/anzoth --version; ls -lh codex-rs/target/fast-release/anzoth; shasum -a 256 codex-rs/target/fast-release/anzoth; file codex-rs/target/fast-release/anzoth; lipo -info codex-rs/target/fast-release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo FAST DEVELOPMENT BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; [ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"; export PATH="$HOME/.cargo/bin:$PATH"; command -v cargo; cargo build --profile fast-release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; ./codex-rs/target/fast-release/anzoth --version; ls -lh codex-rs/target/fast-release/anzoth; shasum -a 256 codex-rs/target/fast-release/anzoth; file codex-rs/target/fast-release/anzoth; lipo -info codex-rs/target/fast-release/anzoth; if ! file codex-rs/target/fast-release/anzoth | grep -q "arm64"; then echo "ERROR: macOS ARM64 build did not resolve to arm64." >&2; exit 1; fi; if file codex-rs/target/fast-release/anzoth | grep -q "x86_64"; then echo "ERROR: macOS ARM64 build resolved to x86_64." >&2; exit 1; fi; if ! lipo -info codex-rs/target/fast-release/anzoth | grep -q "arm64"; then echo "ERROR: lipo did not report arm64 for macOS ARM64 build." >&2; exit 1; fi'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/fast-release/anzoth" $dest } 'scp build artifact'
@@ -245,10 +245,10 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1-debug' {
-        $RemoteHost = 'mac'
+        $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64-debug\anzoth'
         Write-Host 'DEBUG-SYMBOL RELEASE BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo DEBUG-SYMBOL RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; ls -lh codex-rs/target/release/anzoth; shasum -a 256 codex-rs/target/release/anzoth; file codex-rs/target/release/anzoth; lipo -info codex-rs/target/release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo DEBUG-SYMBOL RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth; ls -lh codex-rs/target/release/anzoth; shasum -a 256 codex-rs/target/release/anzoth; file codex-rs/target/release/anzoth; lipo -info codex-rs/target/release/anzoth; if ! file codex-rs/target/release/anzoth | grep -q "arm64"; then echo "ERROR: macOS ARM64 build did not resolve to arm64." >&2; exit 1; fi; if file codex-rs/target/release/anzoth | grep -q "x86_64"; then echo "ERROR: macOS ARM64 build resolved to x86_64." >&2; exit 1; fi; if ! lipo -info codex-rs/target/release/anzoth | grep -q "arm64"; then echo "ERROR: lipo did not report arm64 for macOS ARM64 build." >&2; exit 1; fi'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64-debug'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/release/anzoth" $dest } 'scp build artifact'
