@@ -540,7 +540,7 @@ codegen-units = 4
 inherits = "release"
 lto = false
 debug = 0
-strip = false
+strip = "symbols"
 codegen-units = 16
 incremental = true
 

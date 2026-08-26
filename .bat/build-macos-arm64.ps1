@@ -1,0 +1,175 @@
+param(
+    [ValidateSet('release', 'fast', 'debug')]
+    [string]$Profile = 'release'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$releaseRoot = 'C:\ai\anzoth-cli\releases\macos-arm64'
+$remoteHost = 'mac-m1'
+
+function Invoke-Checked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Script,
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    & $Script
+    if ($LASTEXITCODE -ne 0) { throw "$Label failed with exit code $LASTEXITCODE" }
+}
+
+function Get-Sha256Hex([string]$Path) {
+    $line = (& certutil.exe -hashfile $Path SHA256 2>$null | Select-Object -Skip 1 | Select-Object -First 1).Trim()
+    if ($line -notmatch '^[0-9A-Fa-f]{64}$') { throw "ERROR: unable to compute SHA-256 for $Path" }
+    $line.ToLowerInvariant()
+}
+
+function Get-ProfileSpec([string]$Profile) {
+    switch ($Profile) {
+        'release' { @{ CargoArgs = '--release'; TargetSubdir = 'release'; PublishLabel = 'PRODUCTION RELEASE BUILD'; Strip = $true } }
+        'fast' { @{ CargoArgs = '--profile fast-release'; TargetSubdir = 'fast-release'; PublishLabel = 'FAST DEVELOPMENT BUILD'; Strip = $true } }
+        'debug' { @{ CargoArgs = '--release'; TargetSubdir = 'release'; PublishLabel = 'DEBUG-SYMBOL RELEASE BUILD'; Strip = $false } }
+    }
+}
+
+function Quote-Remote([string]$Value) {
+    "'" + ($Value -replace "'", "'\''") + "'"
+}
+
+if (-not (Get-Command git -ErrorAction SilentlyContinue)) { throw 'ERROR: git is required.' }
+if (-not (Get-Command ssh.exe -ErrorAction SilentlyContinue)) { throw 'ERROR: ssh.exe is required.' }
+if (-not (Get-Command scp.exe -ErrorAction SilentlyContinue)) { throw 'ERROR: scp.exe is required.' }
+
+$profileSpec = Get-ProfileSpec -Profile $Profile
+$originUrl = (git -C $repoRoot remote get-url origin).Trim()
+$sourceBranch = (git -C $repoRoot branch --show-current).Trim()
+$sourceCommit = (git -C $repoRoot rev-parse HEAD).Trim()
+if ([string]::IsNullOrWhiteSpace($originUrl)) { throw 'ERROR: unable to resolve origin URL.' }
+if ([string]::IsNullOrWhiteSpace($sourceBranch)) { throw 'ERROR: unable to resolve current branch.' }
+if ([string]::IsNullOrWhiteSpace($sourceCommit)) { throw 'ERROR: unable to resolve current HEAD.' }
+
+$remoteArch = (& ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost 'uname -m').Trim()
+if ($remoteArch -ne 'arm64') { throw "ERROR: mac-m1 reported '$remoteArch'; expected arm64." }
+
+$remoteHome = (& ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost 'echo "$HOME"').Trim()
+if ([string]::IsNullOrWhiteSpace($remoteHome)) { throw 'ERROR: unable to resolve remote home directory.' }
+
+$remoteRepo = "$remoteHome/anzoth-cli"
+$target = 'aarch64-apple-darwin'
+$cargoArgs = $profileSpec.CargoArgs
+$targetSubdir = $profileSpec.TargetSubdir
+$publishLabel = $profileSpec.PublishLabel
+$stripBinary = [bool]$profileSpec.Strip
+
+Write-Host "Remote host: $remoteHost"
+Write-Host "Remote repo: $remoteRepo"
+Write-Host "Source branch: $sourceBranch"
+Write-Host "Source HEAD: $sourceCommit"
+Write-Host "Profile: $Profile"
+Write-Host "Target: $target"
+
+$repoUrlQ = Quote-Remote $originUrl
+$remoteRepoQ = Quote-Remote $remoteRepo
+$branchQ = Quote-Remote $sourceBranch
+
+$remoteBootstrap = @"
+set -e
+if [ ! -d $remoteRepoQ/.git ]; then
+  git clone --origin origin $repoUrlQ $remoteRepoQ
+fi
+cd $remoteRepoQ
+git_status=`$(git status --short)
+if [ -n "`$git_status" ]; then
+  echo 'ERROR: mac-m1 checkout has local modifications:' >&2
+  printf '%s\n' "`$git_status" >&2
+  exit 1
+fi
+git fetch origin
+git checkout $branchQ
+git pull --ff-only origin $branchQ
+git branch --show-current
+git rev-parse HEAD
+"@
+
+Invoke-Checked { & ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost $remoteBootstrap } 'prepare persistent repo'
+
+$remoteBuild = @"
+set -e
+cd $remoteRepoQ
+echo $publishLabel
+rustup target add aarch64-apple-darwin
+cargo build $cargoArgs --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin
+if [ '$stripBinary' = 'True' ]; then
+  strip codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth
+fi
+./codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth --version
+ls -lh codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth
+shasum -a 256 codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth
+file codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth
+lipo -info codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth
+if ! file codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth | grep -q 'arm64'; then
+  echo 'ERROR: macOS ARM64 build did not resolve to arm64.' >&2
+  exit 1
+fi
+if file codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth | grep -q 'x86_64'; then
+  echo 'ERROR: macOS ARM64 build resolved to x86_64.' >&2
+  exit 1
+fi
+if ! lipo -info codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth | grep -q 'arm64'; then
+  echo 'ERROR: lipo did not report arm64 for macOS ARM64 build.' >&2
+  exit 1
+fi
+"@
+
+Invoke-Checked { & ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost $remoteBuild } 'remote ARM64 build'
+
+$remoteArtifact = "$remoteRepo/codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth"
+$version = (& ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost "cd $remoteRepoQ && './codex-rs/target/aarch64-apple-darwin/$targetSubdir/anzoth' --version").Trim()
+if ($version -notmatch '^Anzoth CLI (\d+\.\d+\.\d+(?:\.\d+)?)$') { throw "ERROR: invalid version banner: $version" }
+$ver = $Matches[1]
+
+New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
+$artifactName = "Anzoth-CLI-$ver-macOS-AppleSilicon-arm64-Setup"
+$tempArtifact = Join-Path $releaseRoot "$artifactName.tmp"
+$finalArtifact = Join-Path $releaseRoot $artifactName
+$manifestPath = Join-Path $releaseRoot 'release-manifest-macos-arm64.json'
+
+Invoke-Checked { & scp.exe -o BatchMode=yes -o ConnectTimeout=15 "${remoteHost}:$remoteArtifact" $tempArtifact } 'scp build artifact'
+
+$sha = Get-Sha256Hex -Path $tempArtifact
+Set-Content -LiteralPath "$tempArtifact.sha256" -Value "$sha *$artifactName" -Encoding ASCII
+
+$remoteSha = (& ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost "shasum -a 256 $([string](Quote-Remote $remoteArtifact)) | cut -d ' ' -f 1").Trim().ToLowerInvariant()
+if ($remoteSha -ne $sha) { throw "ERROR: remote SHA mismatch. Remote=$remoteSha Windows=$sha" }
+
+Set-Content -LiteralPath $manifestPath -Encoding UTF8 -Value (@{
+    schemaVersion = 1
+    platform = 'macOS'
+    architecture = 'arm64'
+    version = $ver
+    filename = $artifactName
+    target = $target
+    profile = $Profile
+    remoteHost = $remoteHost
+    sourceBranch = $sourceBranch
+    sourceCommit = $sourceCommit
+    sha256 = $sha
+    sourceFile = $remoteArtifact
+    releasedAt = (Get-Date).ToString('o')
+} | ConvertTo-Json -Depth 6)
+
+Move-Item -LiteralPath $tempArtifact -Destination $finalArtifact -Force
+Move-Item -LiteralPath "$tempArtifact.sha256" -Destination "$finalArtifact.sha256" -Force
+
+if ((Get-Sha256Hex -Path $finalArtifact) -ne $sha) { throw 'ERROR: local SHA mismatch after publish.' }
+
+Write-Host "Remote artifact: $remoteArtifact"
+Write-Host "Version: $version"
+Write-Host "file: $(( & ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost "file $([string](Quote-Remote $remoteArtifact))").Trim())"
+Write-Host "lipo: $(( & ssh.exe -o BatchMode=yes -o ConnectTimeout=15 $remoteHost "lipo -info $([string](Quote-Remote $remoteArtifact))").Trim())"
+Write-Host "SHA256: $sha"
+Write-Host "Published: $finalArtifact"

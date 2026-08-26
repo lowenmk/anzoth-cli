@@ -221,6 +221,8 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1' {
+        & "$PSScriptRoot\build-macos-arm64.ps1" -Profile release
+        break
         $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
         Write-Host 'PRODUCTION RELEASE BUILD'
@@ -233,6 +235,8 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1-fast' {
+        & "$PSScriptRoot\build-macos-arm64.ps1" -Profile fast
+        break
         $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
         Write-Host 'FAST DEVELOPMENT BUILD'
@@ -245,6 +249,8 @@ switch ($ScriptName) {
     }
 
     'build-macos-arm64-on-m1-debug' {
+        & "$PSScriptRoot\build-macos-arm64.ps1" -Profile debug
+        break
         $RemoteHost = 'mac-m1'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64-debug\anzoth'
         Write-Host 'DEBUG-SYMBOL RELEASE BUILD'
