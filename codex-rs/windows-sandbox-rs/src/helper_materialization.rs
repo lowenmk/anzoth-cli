@@ -18,6 +18,7 @@ use crate::sandbox_bin_dir;
 const DEV_BUILD_VERSION_SENTINEL: &str = "0.0.0";
 pub(crate) const BIN_DIRNAME: &str = "bin";
 pub(crate) const RESOURCES_DIRNAME: &str = "codex-resources";
+const ANZOTH_RESOURCES_DIRNAME: &str = "anzoth-resources";
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum HelperExecutable {
@@ -201,14 +202,22 @@ pub(crate) fn bundled_executable_path_for_exe(exe: &Path, file_name: &str) -> Op
     if dir.file_name() == Some(OsStr::new(BIN_DIRNAME))
         && let Some(package_dir) = dir.parent()
     {
-        let package_resource_candidate = package_dir.join(RESOURCES_DIRNAME).join(file_name);
-        if package_resource_candidate.is_file() {
-            return Some(package_resource_candidate);
+        for resources_dir_name in [RESOURCES_DIRNAME, ANZOTH_RESOURCES_DIRNAME] {
+            let package_resource_candidate = package_dir.join(resources_dir_name).join(file_name);
+            if package_resource_candidate.is_file() {
+                return Some(package_resource_candidate);
+            }
         }
     }
 
-    let resource_candidate = dir.join(RESOURCES_DIRNAME).join(file_name);
-    resource_candidate.is_file().then_some(resource_candidate)
+    for resources_dir_name in [RESOURCES_DIRNAME, ANZOTH_RESOURCES_DIRNAME] {
+        let resource_candidate = dir.join(resources_dir_name).join(file_name);
+        if resource_candidate.is_file() {
+            return Some(resource_candidate);
+        }
+    }
+
+    None
 }
 
 fn helper_destination_for_source(
@@ -486,6 +495,26 @@ mod tests {
         let package_dir = tmp.path().join("package");
         let bin_dir = package_dir.join(BIN_DIRNAME);
         let resources_dir = package_dir.join(RESOURCES_DIRNAME);
+        fs::create_dir_all(&bin_dir).expect("create bin dir");
+        fs::create_dir_all(&resources_dir).expect("create resources dir");
+        let exe = bin_dir.join("codex.exe");
+        let helper = resources_dir.join("codex-command-runner.exe");
+        fs::write(&exe, b"codex").expect("write exe");
+        fs::write(&helper, b"runner").expect("write helper");
+
+        let resolved =
+            bundled_executable_path_for_exe(&exe, /*file_name*/ "codex-command-runner.exe")
+                .expect("helper path");
+
+        assert_eq!(resolved, helper);
+    }
+
+    #[test]
+    fn helper_source_lookup_checks_anzoth_resource_dir_for_bin_exe() {
+        let tmp = TempDir::new().expect("tempdir");
+        let package_dir = tmp.path().join("package");
+        let bin_dir = package_dir.join(BIN_DIRNAME);
+        let resources_dir = package_dir.join("anzoth-resources");
         fs::create_dir_all(&bin_dir).expect("create bin dir");
         fs::create_dir_all(&resources_dir).expect("create resources dir");
         let exe = bin_dir.join("codex.exe");
