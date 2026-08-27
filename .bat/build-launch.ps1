@@ -71,13 +71,19 @@ Set-Location -LiteralPath $Repo
 switch ($ScriptName) {
     'build-win-x86_64' {
         $bin = Join-Path $Repo 'codex-rs\target\release\anzoth.exe'
+        $sandbox = Join-Path $Repo 'codex-rs\target\release\codex-windows-sandbox-setup.exe'
         $dest = 'C:\ai\anzoth-cli\releases\windows-x86_64\anzoth.exe'
+        $resourcesDir = 'C:\ai\anzoth-cli\releases\windows-x86_64\anzoth-resources'
+        $sandboxDest = Join-Path $resourcesDir 'codex-windows-sandbox-setup.exe'
         Write-Host 'PRODUCTION RELEASE BUILD'
         Refresh-Repo
         Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
+        Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
         Invoke-Checked { & $bin --version } 'source binary version'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\windows-x86_64'
+        Ensure-Directory $resourcesDir
         Copy-Item -LiteralPath $bin -Destination $dest -Force
+        Copy-Item -LiteralPath $sandbox -Destination $sandboxDest -Force
         Invoke-Checked { & $dest --version } 'destination binary version'
         Print-FileStats $dest
         break
@@ -85,13 +91,19 @@ switch ($ScriptName) {
 
     'build-win-x86_64-fast' {
         $bin = Join-Path $Repo 'codex-rs\target\fast-release\anzoth.exe'
+        $sandbox = Join-Path $Repo 'codex-rs\target\fast-release\codex-windows-sandbox-setup.exe'
         $dest = 'C:\ai\anzoth-cli\releases\windows-x86_64\anzoth.exe'
+        $resourcesDir = 'C:\ai\anzoth-cli\releases\windows-x86_64\anzoth-resources'
+        $sandboxDest = Join-Path $resourcesDir 'codex-windows-sandbox-setup.exe'
         Write-Host 'FAST DEVELOPMENT BUILD'
         Refresh-Repo
         Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
+        Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
         Invoke-Checked { & $bin --version } 'source binary version'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\windows-x86_64'
+        Ensure-Directory $resourcesDir
         Copy-Item -LiteralPath $bin -Destination $dest -Force
+        Copy-Item -LiteralPath $sandbox -Destination $sandboxDest -Force
         Invoke-Checked { & $dest --version } 'destination binary version'
         Print-FileStats $dest
         break
