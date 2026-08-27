@@ -133,7 +133,7 @@ if ($version -notmatch '^Anzoth CLI (\d+\.\d+\.\d+(?:\.\d+)?)$') { throw "ERROR:
 $ver = $Matches[1]
 
 New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
-$artifactName = "Anzoth-CLI-$ver-macOS-AppleSilicon-arm64-Setup"
+$artifactName = "anzoth"
 $tempArtifact = Join-Path $releaseRoot "$artifactName.tmp"
 $finalArtifact = Join-Path $releaseRoot $artifactName
 $manifestPath = Join-Path $releaseRoot 'release-manifest-macos-arm64.json'
