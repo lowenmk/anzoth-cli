@@ -124,10 +124,10 @@ switch ($ScriptName) {
         $rgDest = Join-Path $pathDir 'rg.exe'
         Write-Host 'PRODUCTION RELEASE BUILD'
         Refresh-Repo
-        Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
-        Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host } 'cargo build code mode host'
-        Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-command-runner } 'cargo build command runner'
-        Invoke-Checked { cargo build --release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
+        Invoke-Checked { cargo build --release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
+        Invoke-Checked { cargo build --release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host } 'cargo build code mode host'
+        Invoke-Checked { cargo build --release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-command-runner } 'cargo build command runner'
+        Invoke-Checked { cargo build --release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
         Invoke-Checked { & $bin --version } 'source binary version'
         Build-PackageResources -Target 'x86_64-pc-windows-msvc' -Profile 'release' -PackageDir $packageDir -EntryPointBin $bin -CodeModeHostBin $codeModeHost -CodexCommandRunnerBin $commandRunner -CodexWindowsSandboxSetupBin $sandbox
         Ensure-Directory 'C:\ai\anzoth-cli\releases\windows-x86_64'
@@ -158,10 +158,10 @@ switch ($ScriptName) {
         $rgDest = Join-Path $pathDir 'rg.exe'
         Write-Host 'FAST DEVELOPMENT BUILD'
         Refresh-Repo
-        Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
-        Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host } 'cargo build code mode host'
-        Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-command-runner } 'cargo build command runner'
-        Invoke-Checked { cargo build --profile fast-release -j 20 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
+        Invoke-Checked { cargo build --profile fast-release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth } 'cargo build'
+        Invoke-Checked { cargo build --profile fast-release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host } 'cargo build code mode host'
+        Invoke-Checked { cargo build --profile fast-release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-command-runner } 'cargo build command runner'
+        Invoke-Checked { cargo build --profile fast-release -j 8 --manifest-path codex-rs/Cargo.toml -p codex-windows-sandbox --bin codex-windows-sandbox-setup } 'cargo build sandbox helper'
         Invoke-Checked { & $bin --version } 'source binary version'
         Build-PackageResources -Target 'x86_64-pc-windows-msvc' -Profile 'fast-release' -PackageDir $packageDir -EntryPointBin $bin -CodeModeHostBin $codeModeHost -CodexCommandRunnerBin $commandRunner -CodexWindowsSandboxSetupBin $sandbox
         Ensure-Directory 'C:\ai\anzoth-cli\releases\windows-x86_64'
