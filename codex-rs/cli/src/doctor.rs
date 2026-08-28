@@ -912,6 +912,7 @@ fn describe_install_context(context: &InstallContext) -> String {
             release_dir,
             resources_dir,
             platform,
+            ..
         } => {
             let platform = match platform {
                 StandalonePlatform::Unix => "unix",
