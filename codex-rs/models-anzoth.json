@@ -51,7 +51,7 @@
       },
       "supports_parallel_tool_calls": true,
       "supports_image_detail_original": true,
-      "context_window": 372000,
+      "context_window": 162500,
       "max_context_window": 372000,
       "auto_compact_token_limit": null,
       "comp_hash": "3000",
