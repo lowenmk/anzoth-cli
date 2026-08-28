@@ -220,8 +220,8 @@ impl CodexPackageLayout {
         }
 
         Some(Self {
-            resources_dir: existing_dir_any(package_dir, RESOURCES_DIRNAMES),
-            path_dir: existing_dir_any(package_dir, PATH_DIRNAMES),
+            resources_dir: existing_dir_any(package_dir.as_path(), RESOURCES_DIRNAMES),
+            path_dir: existing_dir_any(package_dir.as_path(), PATH_DIRNAMES),
             package_dir,
             bin_dir,
         })
