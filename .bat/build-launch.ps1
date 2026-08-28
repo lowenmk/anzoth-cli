@@ -103,7 +103,7 @@ function Build-PackageResources {
         $args += @('--codex-windows-sandbox-setup-bin', $CodexWindowsSandboxSetupBin)
     }
 
-    Invoke-Checked { & python @args } 'package builder'
+    Invoke-Checked { & py -3 @args } 'package builder'
 }
 
 Set-Location -LiteralPath $Repo
