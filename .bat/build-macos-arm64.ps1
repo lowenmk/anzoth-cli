@@ -111,8 +111,8 @@ $remoteBuild = @"
 set -e
 cd $remoteRepoQ
 echo $publishLabel
-[ -f "$HOME/.cargo/env" ] && . "$HOME/.cargo/env"
-export PATH="$HOME/.cargo/bin:$PATH"
+[ -f "`$HOME/.cargo/env" ] && . "`$HOME/.cargo/env"
+export PATH="`$HOME/.cargo/bin:`$PATH"
 command -v cargo
 rustup target add aarch64-apple-darwin
 cargo build $cargoArgs --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin
