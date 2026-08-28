@@ -83,7 +83,7 @@ function Build-PackageResources {
         [string]$CodexWindowsSandboxSetupBin = $null
     )
 
-    $args = @(
+    $packageArgs = @(
         'scripts\build_codex_package.py',
         '--target', $Target,
         '--variant', 'anzoth',
@@ -94,16 +94,16 @@ function Build-PackageResources {
         '--code-mode-host-bin', $CodeModeHostBin
     )
     if ($BwrapBin) {
-        $args += @('--bwrap-bin', $BwrapBin)
+        $packageArgs += @('--bwrap-bin', $BwrapBin)
     }
     if ($CodexCommandRunnerBin) {
-        $args += @('--codex-command-runner-bin', $CodexCommandRunnerBin)
+        $packageArgs += @('--codex-command-runner-bin', $CodexCommandRunnerBin)
     }
     if ($CodexWindowsSandboxSetupBin) {
-        $args += @('--codex-windows-sandbox-setup-bin', $CodexWindowsSandboxSetupBin)
+        $packageArgs += @('--codex-windows-sandbox-setup-bin', $CodexWindowsSandboxSetupBin)
     }
 
-    Invoke-Checked { & py -3 @args } 'package builder'
+    Invoke-Checked { & py -3 @packageArgs } 'package builder'
 }
 
 Set-Location -LiteralPath $Repo
