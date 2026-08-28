@@ -300,11 +300,17 @@ switch ($ScriptName) {
     'build-macos-arm64-on-intel' {
         $RemoteHost = 'mac'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
+        $codeModeHostDest = 'C:\ai\anzoth-cli\releases\macos-arm64\codex-code-mode-host'
+        $pathDir = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth-path'
+        $packageDir = '~/anzoth-mac-validation/dist/macos-arm64/package'
         Write-Host 'PRODUCTION RELEASE BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo PRODUCTION RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; export CARGO_PROFILE_RELEASE_DEBUG=0; rustup target add aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; strip codex-rs/target/aarch64-apple-darwin/release/anzoth; ls -lh codex-rs/target/aarch64-apple-darwin/release/anzoth; shasum -a 256 codex-rs/target/aarch64-apple-darwin/release/anzoth; file codex-rs/target/aarch64-apple-darwin/release/anzoth; lipo -info codex-rs/target/aarch64-apple-darwin/release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo PRODUCTION RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; export CARGO_PROFILE_RELEASE_DEBUG=0; rustup target add aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host --target aarch64-apple-darwin; mkdir -p dist/macos-arm64; cp codex-rs/target/aarch64-apple-darwin/release/anzoth dist/macos-arm64/anzoth; cp codex-rs/target/aarch64-apple-darwin/release/codex-code-mode-host dist/macos-arm64/codex-code-mode-host; strip dist/macos-arm64/anzoth dist/macos-arm64/codex-code-mode-host; python3 scripts/build_codex_package.py --target aarch64-apple-darwin --variant anzoth --cargo-profile release --package-dir dist/macos-arm64/package --force --entrypoint-bin dist/macos-arm64/anzoth --code-mode-host-bin dist/macos-arm64/codex-code-mode-host; ls -lh dist/macos-arm64/anzoth dist/macos-arm64/codex-code-mode-host dist/macos-arm64/package/anzoth-path/rg; shasum -a 256 dist/macos-arm64/anzoth dist/macos-arm64/codex-code-mode-host dist/macos-arm64/package/anzoth-path/rg; file dist/macos-arm64/anzoth dist/macos-arm64/codex-code-mode-host dist/macos-arm64/package/anzoth-path/rg; lipo -info dist/macos-arm64/anzoth'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/release/anzoth" $dest } 'scp build artifact'
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/release/codex-code-mode-host" $codeModeHostDest } 'scp code mode host'
+        Ensure-Directory $pathDir
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/dist/macos-arm64/package/anzoth-path/rg" (Join-Path $pathDir 'rg') } 'scp rg'
         Print-FileStats $dest
         Write-Host 'NOTE: Runtime-check this ARM64 binary on mac-m1 before release.'
         break
@@ -313,11 +319,17 @@ switch ($ScriptName) {
     'build-macos-arm64-on-intel-fast' {
         $RemoteHost = 'mac'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth'
+        $codeModeHostDest = 'C:\ai\anzoth-cli\releases\macos-arm64\codex-code-mode-host'
+        $pathDir = 'C:\ai\anzoth-cli\releases\macos-arm64\anzoth-path'
+        $packageDir = '~/anzoth-mac-validation/dist/macos-arm64-fast/package'
         Write-Host 'FAST DEVELOPMENT BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo FAST DEVELOPMENT BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; rustup target add aarch64-apple-darwin; cargo build --profile fast-release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; ./codex-rs/target/aarch64-apple-darwin/fast-release/anzoth --version; ls -lh codex-rs/target/aarch64-apple-darwin/fast-release/anzoth; shasum -a 256 codex-rs/target/aarch64-apple-darwin/fast-release/anzoth; file codex-rs/target/aarch64-apple-darwin/fast-release/anzoth; lipo -info codex-rs/target/aarch64-apple-darwin/fast-release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo FAST DEVELOPMENT BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; rustup target add aarch64-apple-darwin; cargo build --profile fast-release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; cargo build --profile fast-release --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host --target aarch64-apple-darwin; mkdir -p dist/macos-arm64-fast; cp codex-rs/target/aarch64-apple-darwin/fast-release/anzoth dist/macos-arm64-fast/anzoth; cp codex-rs/target/aarch64-apple-darwin/fast-release/codex-code-mode-host dist/macos-arm64-fast/codex-code-mode-host; python3 scripts/build_codex_package.py --target aarch64-apple-darwin --variant anzoth --cargo-profile fast-release --package-dir dist/macos-arm64-fast/package --force --entrypoint-bin dist/macos-arm64-fast/anzoth --code-mode-host-bin dist/macos-arm64-fast/codex-code-mode-host; ./dist/macos-arm64-fast/anzoth --version; ls -lh dist/macos-arm64-fast/anzoth dist/macos-arm64-fast/codex-code-mode-host dist/macos-arm64-fast/package/anzoth-path/rg; shasum -a 256 dist/macos-arm64-fast/anzoth dist/macos-arm64-fast/codex-code-mode-host dist/macos-arm64-fast/package/anzoth-path/rg; file dist/macos-arm64-fast/anzoth dist/macos-arm64-fast/codex-code-mode-host dist/macos-arm64-fast/package/anzoth-path/rg; lipo -info dist/macos-arm64-fast/anzoth'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/fast-release/anzoth" $dest } 'scp build artifact'
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/fast-release/codex-code-mode-host" $codeModeHostDest } 'scp code mode host'
+        Ensure-Directory $pathDir
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/dist/macos-arm64-fast/package/anzoth-path/rg" (Join-Path $pathDir 'rg') } 'scp rg'
         Print-FileStats $dest
         break
     }
@@ -325,11 +337,17 @@ switch ($ScriptName) {
     'build-macos-arm64-on-intel-debug' {
         $RemoteHost = 'mac'
         $dest = 'C:\ai\anzoth-cli\releases\macos-arm64-debug\anzoth'
+        $codeModeHostDest = 'C:\ai\anzoth-cli\releases\macos-arm64-debug\codex-code-mode-host'
+        $pathDir = 'C:\ai\anzoth-cli\releases\macos-arm64-debug\anzoth-path'
+        $packageDir = '~/anzoth-mac-validation/dist/macos-arm64-debug/package'
         Write-Host 'DEBUG-SYMBOL RELEASE BUILD'
-        $remote = 'set -e; cd ~/anzoth-mac-validation; echo DEBUG-SYMBOL RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; rustup target add aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; ls -lh codex-rs/target/aarch64-apple-darwin/release/anzoth; shasum -a 256 codex-rs/target/aarch64-apple-darwin/release/anzoth; file codex-rs/target/aarch64-apple-darwin/release/anzoth; lipo -info codex-rs/target/aarch64-apple-darwin/release/anzoth'
+        $remote = 'set -e; cd ~/anzoth-mac-validation; echo DEBUG-SYMBOL RELEASE BUILD; git fetch origin; git checkout anzoth-rebrand; git pull --ff-only origin anzoth-rebrand; git rev-parse HEAD; rustup target add aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-cli --bin anzoth --target aarch64-apple-darwin; cargo build --release --manifest-path codex-rs/Cargo.toml -p codex-code-mode-host --bin codex-code-mode-host --target aarch64-apple-darwin; mkdir -p dist/macos-arm64-debug; cp codex-rs/target/aarch64-apple-darwin/release/anzoth dist/macos-arm64-debug/anzoth; cp codex-rs/target/aarch64-apple-darwin/release/codex-code-mode-host dist/macos-arm64-debug/codex-code-mode-host; python3 scripts/build_codex_package.py --target aarch64-apple-darwin --variant anzoth --cargo-profile release --package-dir dist/macos-arm64-debug/package --force --entrypoint-bin dist/macos-arm64-debug/anzoth --code-mode-host-bin dist/macos-arm64-debug/codex-code-mode-host; ls -lh dist/macos-arm64-debug/anzoth dist/macos-arm64-debug/codex-code-mode-host dist/macos-arm64-debug/package/anzoth-path/rg; shasum -a 256 dist/macos-arm64-debug/anzoth dist/macos-arm64-debug/codex-code-mode-host dist/macos-arm64-debug/package/anzoth-path/rg; file dist/macos-arm64-debug/anzoth dist/macos-arm64-debug/codex-code-mode-host dist/macos-arm64-debug/package/anzoth-path/rg; lipo -info dist/macos-arm64-debug/anzoth'
         Invoke-Checked { & ssh $RemoteHost $remote } 'ssh build'
         Ensure-Directory 'C:\ai\anzoth-cli\releases\macos-arm64-debug'
         Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/release/anzoth" $dest } 'scp build artifact'
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/codex-rs/target/aarch64-apple-darwin/release/codex-code-mode-host" $codeModeHostDest } 'scp code mode host'
+        Ensure-Directory $pathDir
+        Invoke-Checked { & scp "${RemoteHost}:~/anzoth-mac-validation/dist/macos-arm64-debug/package/anzoth-path/rg" (Join-Path $pathDir 'rg') } 'scp rg'
         Print-FileStats $dest
         break
     }

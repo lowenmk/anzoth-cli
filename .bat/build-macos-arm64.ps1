@@ -7,7 +7,11 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$releaseRoot = 'C:\ai\anzoth-cli\releases\macos-arm64'
+$releaseRoot = if ($Profile -eq 'debug') {
+    'C:\ai\anzoth-cli\releases\macos-arm64-debug'
+} else {
+    'C:\ai\anzoth-cli\releases\macos-arm64'
+}
 $pathRoot = Join-Path $releaseRoot 'anzoth-path'
 $remoteHost = 'mac-m1'
 
