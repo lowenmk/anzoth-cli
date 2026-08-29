@@ -91,4 +91,16 @@ mod tests {
             "the bundled catalog must be the Anzoth runtime catalog"
         );
     }
+
+    #[test]
+    fn bundled_models_catalog_uses_anzoth_identity_for_primary_model() {
+        let response = bundled_models_response().expect("bundled models.json should parse");
+        let model = response.models.first().expect("bundled catalog should not be empty");
+        assert_eq!(model.display_name, "Anzoth-Core");
+        assert_eq!(model.description.as_deref(), Some("General-purpose model for Anzoth CLI."));
+        assert_eq!(
+            model.availability_nux.as_ref().map(|nux| nux.message.as_str()),
+            Some("Our default Anzoth CLI model is ready to tackle complex code changes, dig into research, produce polished documents, and take on your most ambitious work.")
+        );
+    }
 }

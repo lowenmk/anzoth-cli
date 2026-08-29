@@ -28,8 +28,8 @@
       "comp_hash": "3000",
       "reasoning_summary_format": "experimental",
       "default_reasoning_summary": "none",
-      "display_name": "GPT-5.6-Sol",
-      "description": "Latest frontier agentic coding model.",
+      "display_name": "Anzoth-Core",
+      "description": "General-purpose model for Anzoth CLI.",
       "default_reasoning_level": "low",
       "supported_reasoning_levels": [
         {
@@ -62,7 +62,7 @@
       "minimal_client_version": "0.144.0",
       "supported_in_api": true,
       "availability_nux": {
-        "message": "Our most capable model yet. GPT-5.6 Sol can tackle complex code changes, dig into research, produce polished documents, and take on your most ambitious work. Sol is highly capable at lower reasoning efforts—try starting lower, then turn it up for harder jobs."
+        "message": "Our default Anzoth CLI model is ready to tackle complex code changes, dig into research, produce polished documents, and take on your most ambitious work."
       },
       "upgrade": null,
       "priority": 1,
