@@ -87,11 +87,11 @@ pub const DEFAULT_APPROVAL_REVIEW_PREFERRED_MODEL: &str = "codex-auto-review";
 
 /// Default model used for memory extraction when a provider does not require a
 /// backend-specific model ID.
-pub const DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL: &str = "gpt-5.6-luna";
+pub const DEFAULT_MEMORY_EXTRACTION_PREFERRED_MODEL: &str = "Anzoth-Core";
 
 /// Default model used for memory consolidation when a provider does not require
 /// a backend-specific model ID.
-pub const DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL: &str = "gpt-5.6-terra";
+pub const DEFAULT_MEMORY_CONSOLIDATION_PREFERRED_MODEL: &str = "Anzoth-Core";
 
 /// Runtime provider abstraction used by model execution.
 ///
@@ -710,8 +710,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn anzoth_provider_returns_chatgpt_account_state_even_with_stale_requires_openai_auth_false(
-    ) {
+    async fn anzoth_provider_returns_chatgpt_account_state_even_with_stale_requires_openai_auth_false()
+     {
         let codex_home = std::env::temp_dir().join(format!(
             "codex-model-provider-stale-{}-{}",
             std::process::id(),
@@ -843,16 +843,7 @@ mod tests {
             .map(|model| (model.slug.as_str(), model.display_name.as_str()))
             .collect::<Vec<_>>();
 
-        assert_eq!(
-            models,
-            vec![
-                ("openai.gpt-5.6-sol", "GPT-5.6 Sol"),
-                ("openai.gpt-5.6-terra", "GPT-5.6 Terra"),
-                ("openai.gpt-5.6-luna", "GPT-5.6 Luna"),
-                ("openai.gpt-5.5", "GPT-5.5"),
-                ("openai.gpt-5.4", "GPT-5.4"),
-            ]
-        );
+        assert_eq!(models, vec![("Anzoth-Core", "Anzoth-Core"),]);
 
         let available_models = manager
             .list_models(
@@ -865,13 +856,7 @@ mod tests {
                 .iter()
                 .map(|preset| preset.model.as_str())
                 .collect::<Vec<_>>(),
-            vec![
-                "openai.gpt-5.6-sol",
-                "openai.gpt-5.6-terra",
-                "openai.gpt-5.6-luna",
-                "openai.gpt-5.5",
-                "openai.gpt-5.4",
-            ]
+            vec!["Anzoth-Core",]
         );
 
         let default_model = available_models
@@ -879,7 +864,7 @@ mod tests {
             .find(|preset| preset.is_default)
             .expect("Bedrock catalog should have a default model");
 
-        assert_eq!(default_model.model, "openai.gpt-5.6-sol");
+        assert_eq!(default_model.model, "Anzoth-Core");
     }
 
     #[tokio::test]
@@ -887,9 +872,9 @@ mod tests {
         let configured_model = codex_models_manager::bundled_models_response()
             .expect("bundled models should parse")
             .models
-            .into_iter()
-            .find(|model| model.slug == "gpt-5.5")
-            .expect("bundled models should include GPT-5.5");
+            .first()
+            .cloned()
+            .expect("bundled models should include Anzoth-Core");
         assert!(!configured_model.additional_speed_tiers.is_empty());
         assert!(!configured_model.service_tiers.is_empty());
 
@@ -912,7 +897,7 @@ mod tests {
             .await;
 
         assert_eq!(catalog.models.len(), 1);
-        assert_eq!(catalog.models[0].slug, "gpt-5.5");
+        assert_eq!(catalog.models[0].slug, "Anzoth-Core");
         assert_eq!(
             catalog.models[0].additional_speed_tiers,
             Vec::<String>::new()
