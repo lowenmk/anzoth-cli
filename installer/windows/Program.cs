@@ -14,6 +14,14 @@ internal static class Program
     private const string PackageArchiveName = "anzoth-package-x86_64-pc-windows-msvc.tar.gz";
     private const string PackageChecksumName = "anzoth-package_SHA256SUMS";
     private const string UserAgent = "AnzothInstaller/1.0";
+    private static readonly string[] InstalledPackageFiles =
+    {
+        Path.Combine("bin", "anzoth.exe"),
+        Path.Combine("bin", "codex-code-mode-host.exe"),
+        Path.Combine("anzoth-path", "rg.exe"),
+        Path.Combine("anzoth-resources", "codex-command-runner.exe"),
+        Path.Combine("anzoth-resources", "codex-windows-sandbox-setup.exe"),
+    };
 
     public static int Main(string[] args)
     {
@@ -63,6 +71,7 @@ internal static class Program
         }
 
         CopyDirectory(sourceRoot, installRoot);
+        ValidateInstalledDirectory(installRoot);
         UpdateUserPath(binDir);
         VerifyInstalledCommand(Path.Combine(binDir, "anzoth.exe"));
 
@@ -214,11 +223,6 @@ internal static class Program
         string[] requiredFiles =
         {
             "anzoth-package.json",
-            Path.Combine("bin", "anzoth.exe"),
-            Path.Combine("bin", "codex-code-mode-host.exe"),
-            Path.Combine("anzoth-path", "rg.exe"),
-            Path.Combine("anzoth-resources", "codex-command-runner.exe"),
-            Path.Combine("anzoth-resources", "codex-windows-sandbox-setup.exe"),
         };
 
         foreach (var requiredFile in requiredFiles)
@@ -226,6 +230,26 @@ internal static class Program
             if (!File.Exists(Path.Combine(packageDir, requiredFile)))
             {
                 throw new FileNotFoundException($"Package file is missing: {requiredFile}", Path.Combine(packageDir, requiredFile));
+            }
+        }
+
+        foreach (var requiredFile in InstalledPackageFiles)
+        {
+            if (!File.Exists(Path.Combine(packageDir, requiredFile)))
+            {
+                throw new FileNotFoundException($"Package file is missing: {requiredFile}", Path.Combine(packageDir, requiredFile));
+            }
+        }
+    }
+
+    private static void ValidateInstalledDirectory(string installRoot)
+    {
+        foreach (var requiredFile in InstalledPackageFiles)
+        {
+            var installedPath = Path.Combine(installRoot, requiredFile);
+            if (!File.Exists(installedPath))
+            {
+                throw new FileNotFoundException($"Installed file is missing: {requiredFile}", installedPath);
             }
         }
     }

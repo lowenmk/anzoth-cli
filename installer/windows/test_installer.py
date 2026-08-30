@@ -92,6 +92,15 @@ def main() -> int:
         if not anzoth_exe.is_file():
             raise AssertionError(f"Missing installed entrypoint: {anzoth_exe}")
 
+        helper_files = [
+            install_root / "bin" / "codex-code-mode-host.exe",
+            install_root / "anzoth-resources" / "codex-command-runner.exe",
+            install_root / "anzoth-resources" / "codex-windows-sandbox-setup.exe",
+        ]
+        for helper_file in helper_files:
+            if not helper_file.is_file():
+                raise AssertionError(f"Missing installed helper: {helper_file}")
+
         version_result = run([str(anzoth_exe), "--version"], cwd=REPO_ROOT)
         if version_result.returncode != 0:
             raise AssertionError("Installed anzoth.exe failed --version.")

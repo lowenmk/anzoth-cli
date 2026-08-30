@@ -552,6 +552,32 @@ function Test-PackageContentsAreComplete {
     return $true
 }
 
+function Test-InstalledPackageContentsAreComplete {
+    param(
+        [string]$ReleaseDir
+    )
+
+    if (-not (Test-Path -LiteralPath $ReleaseDir -PathType Container)) {
+        return $false
+    }
+
+    $expectedFiles = @(
+        "anzoth-package.json",
+        "bin\anzoth.exe",
+        "bin\codex-code-mode-host.exe",
+        "anzoth-path\rg.exe",
+        "anzoth-resources\codex-command-runner.exe",
+        "anzoth-resources\codex-windows-sandbox-setup.exe"
+    )
+    foreach ($name in $expectedFiles) {
+        if (-not (Test-Path -LiteralPath (Join-Path $ReleaseDir $name) -PathType Leaf)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
 function Test-LegacyPlatformNpmContentsAreComplete {
     param(
         [string]$PackageDir
@@ -847,6 +873,10 @@ try {
                 Remove-Item -LiteralPath $releaseDir -Recurse -Force
             }
             Move-Item -LiteralPath $stagingDir -Destination $releaseDir
+        }
+
+        if ($installLayout -eq "Package" -and -not (Test-InstalledPackageContentsAreComplete -ReleaseDir $releaseDir)) {
+            throw "Installed Anzoth package did not contain the expected helper executable layout."
         }
 
         New-Item -ItemType Directory -Force -Path $standaloneRoot | Out-Null
