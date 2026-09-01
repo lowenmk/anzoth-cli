@@ -33,7 +33,7 @@ pub fn client_version_to_whole() -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::bundled_anzoth_models_response;
+    use super::{bundled_anzoth_models_response, bundled_models_response};
 
     #[test]
     fn anzoth_model_catalog_parses_and_defaults_to_core() {
@@ -45,11 +45,8 @@ mod tests {
             .iter()
             .map(|model| model.slug.as_str())
             .collect();
-        assert_eq!(slugs, ["Anzoth-Core"]);
-        assert_eq!(
-            response.models.first().map(|model| model.slug.as_str()),
-            Some("Anzoth-Core")
-        );
+        assert_eq!(slugs, ["Anzoth-Coder", "Anzoth-Core"]);
+        assert!(response.models.iter().any(|model| model.slug == "Anzoth-Core"));
         assert!(
             response
                 .models
@@ -87,15 +84,27 @@ mod tests {
                 .models
                 .iter()
                 .map(|model| model.slug.as_str())
-                .eq(["Anzoth-Core"]),
+                .eq(["Anzoth-Coder", "Anzoth-Core"]),
             "the bundled catalog must be the Anzoth runtime catalog"
         );
+        let coder = response
+            .models
+            .iter()
+            .find(|model| model.slug == "Anzoth-Coder")
+            .expect("Anzoth-Coder should be bundled");
+        assert_eq!(coder.context_window, Some(162500));
+        assert_eq!(coder.max_context_window, Some(162500));
+        assert_eq!(coder.effective_context_window_percent, 95);
     }
 
     #[test]
     fn bundled_models_catalog_uses_anzoth_identity_for_primary_model() {
         let response = bundled_models_response().expect("bundled models.json should parse");
-        let model = response.models.first().expect("bundled catalog should not be empty");
+        let model = response
+            .models
+            .iter()
+            .find(|model| model.slug == "Anzoth-Core")
+            .expect("bundled catalog should contain Anzoth-Core");
         assert_eq!(model.display_name, "Anzoth-Core");
         assert_eq!(model.description.as_deref(), Some("General-purpose model for Anzoth CLI."));
         assert_eq!(

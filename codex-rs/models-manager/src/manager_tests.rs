@@ -418,10 +418,16 @@ async fn bundled_anzoth_catalog_defaults_to_core_and_has_exact_metadata() {
     let available = manager
         .try_list_models()
         .expect("bundled catalog should be listable");
-    assert_eq!(available.len(), 1);
+    assert_eq!(available.len(), 2);
     assert_eq!(available[0].model, "Anzoth-Core");
     assert_eq!(available[0].display_name, "Anzoth-Core");
     assert!(available[0].is_default);
+    let coder = manager.get_model_info("Anzoth-Coder", &config).await;
+    assert_eq!(coder.slug, "Anzoth-Coder");
+    assert_eq!(coder.context_window, Some(162500));
+    assert_eq!(coder.max_context_window, Some(162500));
+    assert_eq!(coder.effective_context_window_percent, 95);
+    assert!(!coder.used_fallback_model_metadata);
 
     let default_model = manager
         .get_default_model(
