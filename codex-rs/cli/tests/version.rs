@@ -7,7 +7,7 @@ fn anzoth_version_reports_release_version() -> Result<()> {
     cmd.arg("--version")
         .assert()
         .success()
-        .stdout(predicates::str::contains("Anzoth CLI 1.0.9"));
+        .stdout(predicates::str::contains("Anzoth CLI 1.0.10"));
 
     Ok(())
 }

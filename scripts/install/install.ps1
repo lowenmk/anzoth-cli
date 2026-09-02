@@ -756,12 +756,12 @@ switch ($architecture) {
     }
 }
 
-$codexHome = if ([string]::IsNullOrWhiteSpace($env:CODEX_HOME)) {
-    Join-Path $env:USERPROFILE ".codex"
+$anzothHome = if ([string]::IsNullOrWhiteSpace($env:ANZOTH_HOME)) {
+    Join-Path $env:USERPROFILE ".anzoth"
 } else {
-    $env:CODEX_HOME
+    $env:ANZOTH_HOME
 }
-$standaloneRoot = Join-Path $codexHome "packages\standalone"
+$standaloneRoot = Join-Path $anzothHome "packages\standalone"
 $releasesDir = Join-Path $standaloneRoot "releases"
 $currentDir = Join-Path $standaloneRoot "current"
 $lockPath = Join-Path $standaloneRoot "install.lock"
