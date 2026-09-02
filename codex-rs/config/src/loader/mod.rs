@@ -49,9 +49,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use toml::Value as TomlValue;
 
-#[cfg(unix)]
-const SYSTEM_CONFIG_TOML_FILE_UNIX: &str = "/etc/codex/config.toml";
-
 #[cfg(windows)]
 const DEFAULT_PROGRAM_DATA_DIR_WINDOWS: &str = r"C:\ProgramData";
 
@@ -82,8 +79,8 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// composed with config-style TOML merging plus field-specific handling for
 /// hooks, rules, deny-read permissions, and remote sandbox config:
 ///
-/// - system    `/etc/codex/requirements.toml` (Unix) or
-///   `%ProgramData%\OpenAI\Codex\requirements.toml` (Windows)
+/// - system    `/etc/anzoth/requirements.toml` for Anzoth (Unix) or
+///   `%ProgramData%\Anzoth\requirements.toml` for Anzoth (Windows)
 /// - cloud:    enterprise-managed cloud config bundle requirements
 /// - legacy:   managed_config.toml reinterpreted as requirements.toml
 /// - admin:    managed preferences (*)
@@ -94,11 +91,11 @@ async fn first_layer_config_error_from_entries(layers: &[ConfigLayerEntry]) -> O
 /// Configuration is built up from multiple layers in the following order:
 ///
 /// - admin:    managed preferences (*)
-/// - system    `/etc/codex/config.toml` (Unix) or
-///   `%ProgramData%\OpenAI\Codex\config.toml` (Windows)
+/// - system    `/etc/anzoth/config.toml` for Anzoth (Unix) or
+///   `%ProgramData%\Anzoth\config.toml` for Anzoth (Windows)
 /// - cloud     enterprise-managed cloud config bundle fragments
-/// - user      `${CODEX_HOME}/config.toml`
-/// - profile   `${CODEX_HOME}/<name>.config.toml`, when selected
+/// - user      `${ANZOTH_HOME}/config.toml` for Anzoth (`${CODEX_HOME}` for Codex)
+/// - profile   `${ANZOTH_HOME}/<name>.config.toml` for Anzoth, when selected
 /// - cwd       `${PWD}/config.toml` (loaded but disabled when the directory is untrusted)
 /// - tree      parent directories up to root looking for the runtime's local config directory
 /// - repo      `$(git rev-parse --show-toplevel)/<runtime-config-dir>/config.toml` (loaded but disabled when untrusted)
@@ -613,7 +610,9 @@ pub async fn load_requirements_toml(
 
 #[cfg(unix)]
 fn system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new("/etc/codex/requirements.toml"))
+    let path = Path::new(system_config_root_for_executable(executable_is_anzoth()))
+        .join("requirements.toml");
+    AbsolutePathBuf::from_absolute_path(path)
 }
 
 #[cfg(windows)]
@@ -632,7 +631,9 @@ fn system_requirements_toml_file_with_overrides(
 
 #[cfg(unix)]
 pub fn system_config_toml_file() -> io::Result<AbsolutePathBuf> {
-    AbsolutePathBuf::from_absolute_path(Path::new(SYSTEM_CONFIG_TOML_FILE_UNIX))
+    let path = Path::new(system_config_root_for_executable(executable_is_anzoth()))
+        .join("config.toml");
+    AbsolutePathBuf::from_absolute_path(path)
 }
 
 #[cfg(windows)]
@@ -650,7 +651,7 @@ fn system_config_toml_file_with_overrides(
 }
 
 #[cfg(windows)]
-fn windows_codex_system_dir() -> PathBuf {
+fn windows_runtime_system_dir() -> PathBuf {
     let program_data = windows_program_data_dir_from_known_folder().unwrap_or_else(|err| {
         tracing::warn!(
             error = %err,
@@ -658,18 +659,22 @@ fn windows_codex_system_dir() -> PathBuf {
         );
         PathBuf::from(DEFAULT_PROGRAM_DATA_DIR_WINDOWS)
     });
-    program_data.join("OpenAI").join("Codex")
+    if executable_is_anzoth() {
+        program_data.join("Anzoth")
+    } else {
+        program_data.join("OpenAI").join("Codex")
+    }
 }
 
 #[cfg(windows)]
 fn windows_system_requirements_toml_file() -> io::Result<AbsolutePathBuf> {
-    let requirements_toml_file = windows_codex_system_dir().join("requirements.toml");
+    let requirements_toml_file = windows_runtime_system_dir().join("requirements.toml");
     AbsolutePathBuf::try_from(requirements_toml_file)
 }
 
 #[cfg(windows)]
 fn windows_system_config_toml_file() -> io::Result<AbsolutePathBuf> {
-    let config_toml_file = windows_codex_system_dir().join("config.toml");
+    let config_toml_file = windows_runtime_system_dir().join("config.toml");
     AbsolutePathBuf::try_from(config_toml_file)
 }
 
@@ -934,13 +939,33 @@ fn project_layer_entry(
     entry.with_hooks_config_folder_override(hooks_config_folder_override)
 }
 
-fn project_config_dir_name() -> &'static str {
-    let executable_is_anzoth = std::env::current_exe()
+fn executable_is_anzoth() -> bool {
+    std::env::current_exe()
         .ok()
         .and_then(|path| path.file_stem().map(|stem| stem.to_owned()))
         .and_then(|stem| stem.to_str().map(str::to_ascii_lowercase))
-        .is_some_and(|stem| stem.starts_with("anzoth"));
-    project_config_dir_name_for_executable(executable_is_anzoth)
+        .is_some_and(|stem| stem.starts_with("anzoth"))
+}
+
+#[cfg(test)]
+mod runtime_path_tests {
+    #[test]
+    fn runtime_system_roots_are_product_specific() {
+        assert_eq!(super::system_config_root_for_executable(true), "/etc/anzoth");
+        assert_eq!(super::system_config_root_for_executable(false), "/etc/codex");
+    }
+}
+
+fn system_config_root_for_executable(executable_is_anzoth: bool) -> &'static str {
+    if executable_is_anzoth {
+        "/etc/anzoth"
+    } else {
+        "/etc/codex"
+    }
+}
+
+fn project_config_dir_name() -> &'static str {
+    project_config_dir_name_for_executable(executable_is_anzoth())
 }
 
 fn project_config_dir_name_for_executable(executable_is_anzoth: bool) -> &'static str {

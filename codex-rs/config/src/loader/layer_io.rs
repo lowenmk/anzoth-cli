@@ -18,6 +18,8 @@ use toml::Value as TomlValue;
 
 #[cfg(unix)]
 const CODEX_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/codex/managed_config.toml";
+#[cfg(unix)]
+const ANZOTH_MANAGED_CONFIG_SYSTEM_PATH: &str = "/etc/anzoth/managed_config.toml";
 
 #[derive(Debug, Clone)]
 pub(super) struct MangedConfigFromFile {
@@ -173,11 +175,25 @@ pub(super) fn managed_config_default_path(codex_home: &Path) -> PathBuf {
     #[cfg(unix)]
     {
         let _ = codex_home;
-        PathBuf::from(CODEX_MANAGED_CONFIG_SYSTEM_PATH)
+        let path = if executable_is_anzoth() {
+            ANZOTH_MANAGED_CONFIG_SYSTEM_PATH
+        } else {
+            CODEX_MANAGED_CONFIG_SYSTEM_PATH
+        };
+        PathBuf::from(path)
     }
 
     #[cfg(not(unix))]
     {
         codex_home.join("managed_config.toml")
     }
+}
+
+#[cfg(unix)]
+fn executable_is_anzoth() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.file_stem().map(|stem| stem.to_owned()))
+        .and_then(|stem| stem.to_str().map(str::to_ascii_lowercase))
+        .is_some_and(|stem| stem.starts_with("anzoth"))
 }
