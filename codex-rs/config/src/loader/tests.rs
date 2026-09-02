@@ -11,6 +11,12 @@ use codex_utils_path_uri::PathUri;
 use pretty_assertions::assert_eq;
 use tempfile::tempdir;
 
+#[test]
+fn project_config_directory_name_is_runtime_specific() {
+    assert_eq!(project_config_dir_name_for_executable(true), ".anzoth");
+    assert_eq!(project_config_dir_name_for_executable(false), ".codex");
+}
+
 struct TestFileSystem;
 
 impl ExecutorFileSystem for TestFileSystem {
