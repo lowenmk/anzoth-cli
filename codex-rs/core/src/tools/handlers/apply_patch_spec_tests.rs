@@ -11,9 +11,7 @@ fn create_apply_patch_freeform_tool_matches_expected_spec() {
         create_apply_patch_freeform_tool(/*include_environment_id*/ false),
         ToolSpec::Freeform(FreeformTool {
             name: "apply_patch".to_string(),
-            description:
-                "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON."
-                    .to_string(),
+            description: APPLY_PATCH_FREEFORM_DESCRIPTION.to_string(),
             format: FreeformToolFormat {
                 r#type: "grammar".to_string(),
                 syntax: "lark".to_string(),
@@ -21,6 +19,19 @@ fn create_apply_patch_freeform_tool_matches_expected_spec() {
             },
         })
     );
+}
+
+#[test]
+fn create_apply_patch_freeform_tool_describes_canonical_patch_grammar() {
+    let ToolSpec::Freeform(tool) = create_apply_patch_freeform_tool(false) else {
+        panic!("expected freeform tool");
+    };
+    assert!(tool.description.contains("*** Begin Patch"));
+    assert!(tool.description.contains("*** End Patch"));
+    assert!(tool.description.contains("*** Add File: path"));
+    assert!(tool.description.contains("+hello"));
+    assert!(tool.description.contains("never JSON"));
+    assert!(tool.description.contains("Do not use Markdown fences"));
 }
 
 #[test]

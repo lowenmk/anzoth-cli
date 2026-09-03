@@ -184,12 +184,30 @@ fn store_helper_path(cache_key: String, path: PathBuf) {
 
 fn sibling_source_path(kind: HelperExecutable) -> Result<PathBuf> {
     let exe = std::env::current_exe().context("resolve current executable for helper lookup")?;
-    bundled_executable_path_for_exe(&exe, kind.file_name()).ok_or_else(|| {
-        anyhow!(
-            "helper not found next to current executable or under {RESOURCES_DIRNAME}: {}",
-            exe.display()
-        )
-    })
+    if let Some(path) = bundled_executable_path_for_exe(&exe, kind.file_name()) {
+        return Ok(path);
+    }
+    if let Some(path) = codex_install_context::InstallContext::current()
+        .bundled_resource(kind.file_name())
+        .map(|path| path.into_path_buf())
+    {
+        return Ok(path);
+    }
+    #[cfg(windows)]
+    if let Some(program_files) = std::env::var_os("ProgramFiles") {
+        let installed = PathBuf::from(program_files)
+            .join("Anzoth")
+            .join(ANZOTH_RESOURCES_DIRNAME)
+            .join(kind.file_name());
+        if installed.is_file() {
+            return Ok(installed);
+        }
+    }
+    Err(anyhow!(
+        "helper {} not found next to current executable or installed resources: {}",
+        kind.label(),
+        exe.display()
+    ))
 }
 
 pub(crate) fn bundled_executable_path_for_exe(exe: &Path, file_name: &str) -> Option<PathBuf> {

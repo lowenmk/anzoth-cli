@@ -7,6 +7,7 @@ use codex_tools::ResponsesApiTool;
 use codex_tools::ToolSpec;
 
 const APPLY_PATCH_LARK_GRAMMAR: &str = include_str!("apply_patch.lark");
+const APPLY_PATCH_FREEFORM_DESCRIPTION: &str = "Use the `apply_patch` tool to edit files. This is a FREEFORM tool: pass one complete patch as plain text, never JSON. The first line MUST be `*** Begin Patch` and the last line MUST be `*** End Patch`. For a new file, use `*** Add File: path` followed by each file line prefixed with `+`. Example: `*** Begin Patch\\n*** Add File: example.txt\\n+hello\\n*** End Patch`. Do not use Markdown fences, raw file contents, shell commands, or plain-English edit descriptions.";
 
 /// Returns a custom tool that can be used to edit files. Well-suited for GPT-5 models
 /// https://platform.openai.com/docs/guides/function-calling#custom-tools
@@ -21,7 +22,7 @@ pub fn create_apply_patch_freeform_tool(include_environment_id: bool) -> ToolSpe
     };
     ToolSpec::Freeform(FreeformTool {
         name: "apply_patch".to_string(),
-        description: "Use the `apply_patch` tool to edit files. This is a FREEFORM tool, so do not wrap the patch in JSON.".to_string(),
+        description: APPLY_PATCH_FREEFORM_DESCRIPTION.to_string(),
         format: FreeformToolFormat {
             r#type: "grammar".to_string(),
             syntax: "lark".to_string(),
