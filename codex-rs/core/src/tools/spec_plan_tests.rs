@@ -688,6 +688,21 @@ async fn function_form_apply_patch_uses_function_tool_spec() {
 }
 
 #[tokio::test]
+async fn direct_model_without_apply_patch_capability_keeps_shell_but_hides_apply_patch() {
+    let plan = probe(|turn| {
+        set_features(turn, &[Feature::ShellTool]);
+        turn.model_info.shell_type = ConfigShellToolType::ShellCommand;
+        turn.model_info.apply_patch_tool_type = None;
+    })
+    .await;
+
+    plan.assert_visible_contains(&["shell_command"]);
+    plan.assert_visible_lacks(&["apply_patch"]);
+    plan.assert_registered_contains(&["shell_command"]);
+    plan.assert_registered_lacks(&["apply_patch"]);
+}
+
+#[tokio::test]
 async fn environment_tools_follow_the_step_context() {
     let (_session, mut turn) = make_session_and_context().await;
     set_feature(&mut turn, Feature::UnifiedExec, /*enabled*/ true);
