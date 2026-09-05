@@ -11,9 +11,13 @@ const DEFERRED_NESTED_TOOLS_GUIDANCE: &str = r#"Some deferred nested tools may b
 To find one, filter `ALL_TOOLS` by `name` and `description`."#;
 const EXEC_DESCRIPTION_TEMPLATE: &str = r#"Run JavaScript code to orchestrate/compose tool calls
 - Evaluates the provided JavaScript code in a fresh V8 isolate as an async module.
-- All nested tools are available on the global `tools` object, for example `await tools.exec_command(...)`. Tool names are exposed as normalized JavaScript identifiers, for example `await tools.mcp__ologs__get_profile(...)`.
+- All nested tools are available on the global `tools` object, for example `await tools.shell_command(...)`. Tool names are exposed as normalized JavaScript identifiers, for example `await tools.mcp__ologs__get_profile(...)`.
 - Nested tool methods take either a string or an object as their input argument.
 - Nested tools return either an object or a string, based on the description.
+- JavaScript is for orchestration and control flow. Use only the provided `tools.*` APIs for external actions.
+- Do not use `import()`, `require()`, external modules, or Node.js filesystem/process APIs such as `fs` or `child_process`.
+- For shell execution, use `await tools.shell_command({ command: "..." })`.
+- The `exec` input must be JavaScript source; do not pass a raw shell command as the `exec` input. Put the shell command string in the `command` field of `tools.shell_command`.
 - Runs raw JavaScript -- no Node, no file system, no network access, no console.
 - Accepts raw JavaScript source text, not JSON, quoted strings, or markdown code fences.
 - You may optionally start the tool input with a first-line pragma like `// @exec: {"yield_time_ms": 10000, "max_output_tokens": 1000}`.
@@ -882,6 +886,14 @@ bar"
             build_exec_tool_description(&[], &[], &BTreeMap::new(), /*code_mode_only*/ false);
         assert!(description.contains("`setTimeout(callback: () => void, delayMs?: number)`"));
         assert!(description.contains("`clearTimeout(timeoutId?: number)`"));
+        assert!(description.contains("`await tools.shell_command(...)`"));
+        assert!(!description.contains("`await tools.exec_command(...)`"));
+        assert!(description.contains("provided `tools.*` APIs for external actions"));
+        assert!(description.contains("Do not use `import()`"));
+        assert!(description.contains("`require()`"));
+        assert!(description.contains("`await tools.shell_command({ command: \"...\" })`"));
+        assert!(description.contains("must be JavaScript source"));
+        assert!(description.contains("do not pass a raw shell command as the `exec` input"));
     }
 
     #[test]
