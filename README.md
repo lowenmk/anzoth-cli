@@ -5,7 +5,7 @@
 </br>
 If you want Anzoth in your code editor, install the matching IDE extension.
 </br>If you want the desktop app experience, run <code>anzoth app</code> or visit the Anzoth App page.
-</br>If you are looking for the cloud-based agent from OpenAI, go to chatgpt.com/codex.</p>
+</br>For the Anzoth API, account access, and product documentation, visit <a href="https://anzoth.com">anzoth.com</a>.</p>
 
 ---
 
@@ -13,57 +13,26 @@ If you want Anzoth in your code editor, install the matching IDE extension.
 
 ### Installing and running Anzoth CLI
 
-Run the following on Mac or Linux to install Anzoth CLI:
+Choose the installer for your platform from the official Anzoth CLI download page:
 
 ```shell
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
+# https://anzoth.com/download
 ```
 
-Run the following on Windows to install Anzoth CLI:
-
-```shell
-powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
-```
-
-Codex CLI can also be installed via the following package managers:
-
-```shell
-# Install using npm
-npm install -g @anzoth/cli
-```
-
-```shell
-# Install using Homebrew
-brew install --cask codex
-```
+The download page provides native Windows, Linux, and macOS packages, SHA-256
+files, and the currently supported npm installation path. Follow its
+platform-specific verification and installation steps.
 
 Then simply run `anzoth` to get started.
 
-<details>
-<summary>You can also go to the <a href="https://github.com/lowenmk/anzoth-cli/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+### Using Anzoth authentication
 
-Each GitHub Release contains many executables, but in practice, you likely want one of these:
-
-- macOS
-  - Apple Silicon/arm64: `anzoth-aarch64-apple-darwin.tar.gz`
-  - x86_64 (older Mac hardware): `anzoth-x86_64-apple-darwin.tar.gz`
-- Linux
-  - x86_64: `anzoth-x86_64-unknown-linux-musl.tar.gz`
-  - arm64: `anzoth-aarch64-unknown-linux-musl.tar.gz`
-
-Each archive contains a single entry with the platform baked into the name (e.g., `anzoth-x86_64-unknown-linux-musl`), so you likely want to rename it to `anzoth` after extracting it.
-
-</details>
-
-### Using Codex with your ChatGPT plan
-
-Run `anzoth` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Anzoth as part of your Plus, Pro, Business, Edu, or Enterprise plan.
-
-You can also use Anzoth with an API key, but this requires additional setup.
+Run `anzoth` and follow the Anzoth authentication flow, or configure an Anzoth
+API key as described in the [Anzoth documentation](https://anzoth.com/docs).
 
 ## Docs
 
-- [**Anzoth Documentation**](https://developers.openai.com/codex)
+- [**Anzoth Documentation**](https://anzoth.com/docs)
 - [**Contributing**](./docs/contributing.md)
 - [**Installing & building**](./docs/install.md)
 - [**Open source fund**](./docs/open-source-fund.md)

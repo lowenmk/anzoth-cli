@@ -427,6 +427,15 @@ async fn bundled_anzoth_catalog_defaults_to_core_and_has_exact_metadata() {
     assert_eq!(coder.context_window, Some(162500));
     assert_eq!(coder.max_context_window, Some(162500));
     assert_eq!(coder.effective_context_window_percent, 95);
+    assert_eq!(
+        coder.shell_type,
+        codex_protocol::openai_models::ConfigShellToolType::ShellCommand
+    );
+    assert_eq!(
+        coder.tool_mode,
+        Some(codex_protocol::openai_models::ToolMode::Direct)
+    );
+    assert_eq!(coder.apply_patch_tool_type, None);
     assert!(!coder.used_fallback_model_metadata);
 
     let default_model = manager
@@ -453,6 +462,21 @@ async fn bundled_anzoth_catalog_defaults_to_core_and_has_exact_metadata() {
             .as_ref()
             .map(|effort| effort.as_str()),
         Some("medium")
+    );
+    assert_eq!(model_info.context_window, Some(786432));
+    assert_eq!(model_info.max_context_window, Some(786432));
+    assert_eq!(model_info.effective_context_window_percent, 95);
+    assert_eq!(
+        model_info.shell_type,
+        codex_protocol::openai_models::ConfigShellToolType::ShellCommand
+    );
+    assert_eq!(
+        model_info.tool_mode,
+        Some(codex_protocol::openai_models::ToolMode::CodeModeOnly)
+    );
+    assert_eq!(
+        model_info.apply_patch_tool_type,
+        Some(codex_protocol::openai_models::ApplyPatchToolType::Freeform)
     );
 }
 

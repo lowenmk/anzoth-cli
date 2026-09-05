@@ -46,18 +46,17 @@ mod tests {
             .map(|model| model.slug.as_str())
             .collect();
         assert_eq!(slugs, ["Anzoth-Coder", "Anzoth-Core"]);
-        assert!(response.models.iter().any(|model| model.slug == "Anzoth-Core"));
         assert!(
             response
                 .models
                 .iter()
-                .all(|model| !model.use_responses_lite)
+                .any(|model| model.slug == "Anzoth-Core")
         );
         assert!(
             response
                 .models
                 .iter()
-                .all(|model| model.tool_mode.is_none())
+                .all(|model| !model.use_responses_lite)
         );
         assert!(
             response
@@ -71,13 +70,6 @@ mod tests {
                 .iter()
                 .all(|model| !model.supports_search_tool)
         );
-        assert!(response.models.iter().all(|model| {
-            matches!(
-                model.apply_patch_tool_type,
-                Some(codex_protocol::openai_models::ApplyPatchToolType::Function)
-            )
-        }));
-
         let bundled = bundled_anzoth_models_response().expect("bundled catalog should still parse");
         assert!(
             bundled
@@ -95,6 +87,50 @@ mod tests {
         assert_eq!(coder.context_window, Some(162500));
         assert_eq!(coder.max_context_window, Some(162500));
         assert_eq!(coder.effective_context_window_percent, 95);
+        assert_eq!(
+            coder.shell_type,
+            codex_protocol::openai_models::ConfigShellToolType::ShellCommand
+        );
+        assert_eq!(
+            coder.tool_mode,
+            Some(codex_protocol::openai_models::ToolMode::Direct)
+        );
+        assert_eq!(coder.apply_patch_tool_type, None);
+        assert_eq!(
+            coder.input_modalities,
+            vec![
+                codex_protocol::openai_models::InputModality::Text,
+                codex_protocol::openai_models::InputModality::Image,
+            ]
+        );
+
+        let core = response
+            .models
+            .iter()
+            .find(|model| model.slug == "Anzoth-Core")
+            .expect("Anzoth-Core should be bundled");
+        assert_eq!(core.context_window, Some(786432));
+        assert_eq!(core.max_context_window, Some(786432));
+        assert_eq!(core.effective_context_window_percent, 95);
+        assert_eq!(
+            core.shell_type,
+            codex_protocol::openai_models::ConfigShellToolType::ShellCommand
+        );
+        assert_eq!(
+            core.tool_mode,
+            Some(codex_protocol::openai_models::ToolMode::CodeModeOnly)
+        );
+        assert_eq!(
+            core.apply_patch_tool_type,
+            Some(codex_protocol::openai_models::ApplyPatchToolType::Freeform)
+        );
+        assert_eq!(
+            core.input_modalities,
+            vec![
+                codex_protocol::openai_models::InputModality::Text,
+                codex_protocol::openai_models::InputModality::Image,
+            ]
+        );
     }
 
     #[test]
@@ -106,10 +142,10 @@ mod tests {
             .find(|model| model.slug == "Anzoth-Core")
             .expect("bundled catalog should contain Anzoth-Core");
         assert_eq!(model.display_name, "Anzoth-Core");
-        assert_eq!(model.description.as_deref(), Some("General-purpose model for Anzoth CLI."));
         assert_eq!(
-            model.availability_nux.as_ref().map(|nux| nux.message.as_str()),
-            Some("Our default Anzoth CLI model is ready to tackle complex code changes, dig into research, produce polished documents, and take on your most ambitious work.")
+            model.description.as_deref(),
+            Some("General-purpose model for Anzoth CLI.")
         );
+        assert!(model.availability_nux.is_none());
     }
 }

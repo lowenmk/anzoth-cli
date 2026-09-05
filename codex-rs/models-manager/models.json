@@ -1,6 +1,6 @@
 {
   "models": [
-    {"slug":"Anzoth-Coder","display_name":"Anzoth-Coder","description":"Default coding model for Anzoth CLI.","default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"Fast responses with lighter reasoning"},{"effort":"medium","description":"Balances speed and reasoning depth for everyday tasks"},{"effort":"high","description":"Greater reasoning depth for complex problems"}],"shell_type":"shell_command","visibility":"list","supported_in_api":true,"priority":1,"additional_speed_tiers":["fast"],"service_tiers":[{"id":"priority","name":"Fast","description":"1.5x speed, increased usage"}],"default_service_tier":null,"availability_nux":null,"upgrade":null,"base_instructions":"You are Anzoth CLI, a coding agent. You and the user share the same workspace and collaborate to achieve the user's goals.","model_messages":null,"include_skills_usage_instructions":false,"supports_reasoning_summary_parameter":true,"default_reasoning_summary":"auto","support_verbosity":true,"default_verbosity":"low","apply_patch_tool_type":"function","web_search_tool_type":"text_and_image","truncation_policy":{"mode":"tokens","limit":10000},"supports_parallel_tool_calls":true,"supports_image_detail_original":true,"context_window":162500,"max_context_window":162500,"auto_compact_token_limit":null,"comp_hash":"3000","effective_context_window_percent":95,"experimental_supported_tools":[],"input_modalities":["text","image"],"use_responses_lite":false,"auto_review_model_override":null},
+    {"slug":"Anzoth-Coder","display_name":"Anzoth-Coder","description":"Default coding model for Anzoth CLI.","default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"Fast responses with lighter reasoning"},{"effort":"medium","description":"Balances speed and reasoning depth for everyday tasks"},{"effort":"high","description":"Greater reasoning depth for complex problems"}],"shell_type":"shell_command","visibility":"list","supported_in_api":true,"priority":1,"additional_speed_tiers":["fast"],"service_tiers":[{"id":"priority","name":"Fast","description":"1.5x speed, increased usage"}],"default_service_tier":null,"availability_nux":null,"upgrade":null,"base_instructions":"You are Anzoth CLI, a coding agent. You and the user share the same workspace and collaborate to achieve the user's goals.","model_messages":null,"include_skills_usage_instructions":false,"supports_reasoning_summary_parameter":true,"default_reasoning_summary":"auto","support_verbosity":true,"default_verbosity":"low","apply_patch_tool_type":null,"web_search_tool_type":"text_and_image","truncation_policy":{"mode":"tokens","limit":10000},"supports_parallel_tool_calls":true,"supports_image_detail_original":true,"context_window":162500,"max_context_window":162500,"auto_compact_token_limit":null,"comp_hash":"3000","effective_context_window_percent":95,"experimental_supported_tools":[],"input_modalities":["text","image"],"use_responses_lite":false,"auto_review_model_override":null,"tool_mode":"direct"},
     {
       "slug": "Anzoth-Core",
       "display_name": "Anzoth-Core",
@@ -44,7 +44,7 @@
       "default_reasoning_summary": "auto",
       "support_verbosity": true,
       "default_verbosity": "low",
-      "apply_patch_tool_type": "function",
+      "apply_patch_tool_type": "freeform",
       "web_search_tool_type": "text_and_image",
       "truncation_policy": {
         "mode": "tokens",
@@ -52,8 +52,8 @@
       },
       "supports_parallel_tool_calls": true,
       "supports_image_detail_original": true,
-      "context_window": 162500,
-      "max_context_window": 162500,
+      "context_window": 786432,
+      "max_context_window": 786432,
       "auto_compact_token_limit": null,
       "comp_hash": "3000",
       "effective_context_window_percent": 95,
@@ -63,7 +63,8 @@
         "image"
       ],
       "use_responses_lite": false,
-      "auto_review_model_override": null
+      "auto_review_model_override": null,
+      "tool_mode": "code_mode_only"
     }
   ]
 }
