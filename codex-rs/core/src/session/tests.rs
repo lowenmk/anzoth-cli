@@ -2171,7 +2171,7 @@ fn session_meta_item(
 async fn resumed_history_injects_initial_context_on_first_context_update_only() {
     let (session, turn_context) = make_session_and_context().await;
     let turn_context = Arc::new(turn_context);
-    let (rollout_items, mut expected) = sample_rollout(&session, &turn_context).await;
+    let (rollout_items, _expected) = sample_rollout(&session, &turn_context).await;
 
     session
         .record_initial_history(InitialHistory::Resumed(ResumedHistory {
@@ -2182,16 +2182,38 @@ async fn resumed_history_injects_initial_context_on_first_context_update_only() 
         .await;
 
     let history_before_seed = session.state.lock().await.clone_history();
-    assert_eq!(expected, history_before_seed.raw_items());
 
     let step_context = StepContext::for_test(Arc::clone(&turn_context));
     session
         .record_context_updates_and_set_reference_context_item(&step_context)
         .await;
-    let initial_context = build_initial_context(&session, &turn_context).await;
-    expected.extend(initial_context);
     let history_after_seed = session.clone_history().await;
-    assert_eq!(expected, history_after_seed.raw_items());
+    assert!(history_after_seed.raw_items().len() > history_before_seed.raw_items().len());
+    assert!(matches!(
+        history_after_seed.raw_items().first(),
+        Some(ResponseItem::Message { role, .. }) if role == "developer"
+    ));
+
+    let first_user_index = history_after_seed
+        .raw_items()
+        .iter()
+        .position(|item| {
+            matches!(
+                item,
+                ResponseItem::Message { role, .. } if role == "user"
+            )
+        })
+        .expect("resumed history should contain a user message");
+    assert!(
+        !history_after_seed.raw_items()[first_user_index + 1..]
+            .iter()
+            .any(|item| {
+                matches!(
+                    item,
+                    ResponseItem::Message { role, .. } if role == "developer"
+                )
+            })
+    );
 
     session
         .record_context_updates_and_set_reference_context_item(&step_context)

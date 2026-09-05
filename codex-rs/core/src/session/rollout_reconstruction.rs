@@ -371,6 +371,7 @@ impl Session {
                 | RolloutItem::SessionMeta(_) => {}
             }
         }
+        history.move_contextual_developer_items_to_front();
 
         let reference_context_item = match reference_context_item {
             TurnReferenceContextItem::NeverSet | TurnReferenceContextItem::Cleared => None,

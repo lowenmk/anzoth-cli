@@ -43,6 +43,18 @@ fn assistant_message(text: &str) -> ResponseItem {
     }
 }
 
+fn contextual_developer_message(text: &str) -> ResponseItem {
+    ResponseItem::Message {
+        id: None,
+        role: "developer".to_string(),
+        content: vec![ContentItem::InputText {
+            text: format!("<permissions instructions>\n{text}"),
+        }],
+        phase: None,
+        internal_chat_message_metadata_passthrough: None,
+    }
+}
+
 fn inter_agent_assistant_message(text: &str) -> ResponseItem {
     let communication = InterAgentCommunication::new(
         AgentPath::root(),
@@ -105,6 +117,28 @@ fn completed_user_turn_rollout(
         },
     )));
     rollout_items
+}
+
+#[tokio::test]
+async fn reconstruct_history_moves_contextual_developer_items_before_conversation() {
+    let (session, turn_context) = make_session_and_context().await;
+    let historical_user = user_message("historical user");
+    let current_user = user_message("current user");
+    let developer = contextual_developer_message("runtime context");
+    let rollout_items = vec![
+        RolloutItem::ResponseItem(historical_user.clone()),
+        RolloutItem::ResponseItem(developer.clone()),
+        RolloutItem::ResponseItem(current_user.clone()),
+    ];
+
+    let reconstructed = session
+        .reconstruct_history_from_rollout(&turn_context, &rollout_items)
+        .await;
+
+    assert_eq!(
+        reconstructed.history,
+        vec![developer, historical_user, current_user]
+    );
 }
 
 #[tokio::test]

@@ -35,6 +35,7 @@ use crate::context::world_state::WorldState;
 use crate::current_time::TimeProvider;
 use crate::default_skill_metadata_budget;
 use crate::environment_selection::TurnEnvironmentSnapshot;
+use crate::event_mapping::is_contextual_dev_message_content;
 use crate::exec_policy::ExecPolicyManager;
 use crate::image_preparation::prepare_response_items;
 use crate::parse_turn_item;
@@ -3042,6 +3043,21 @@ impl Session {
         self.persist_rollout_items(&rollout_items).await;
     }
 
+    async fn prepend_conversation_items(&self, turn_context: &TurnContext, items: &[ResponseItem]) {
+        let items = self.prepare_conversation_items_for_history(turn_context, items);
+        let items = items.as_ref();
+        {
+            let mut state = self.state.lock().await;
+            state.current_time_reminder.note_recorded_items(items);
+            state.history.prepend_items(
+                items.iter(),
+                turn_context.model_info.truncation_policy.into(),
+            );
+        }
+        self.persist_rollout_response_items(items).await;
+        self.send_raw_response_items(turn_context, items).await;
+    }
+
     pub fn enabled(&self, feature: Feature) -> bool {
         self.features.enabled(feature)
     }
@@ -3624,8 +3640,20 @@ impl Session {
             return world_state;
         }
         if !context_items.is_empty() {
-            self.record_conversation_items(turn_context, &context_items)
-                .await;
+            let has_developer_context = context_items.iter().any(|item| {
+                matches!(
+                    item,
+                    ResponseItem::Message { role, content, .. }
+                        if role == "developer" && is_contextual_dev_message_content(content)
+                )
+            });
+            if has_developer_context && !self.clone_history().await.raw_items().is_empty() {
+                self.prepend_conversation_items(turn_context, &context_items)
+                    .await;
+            } else {
+                self.record_conversation_items(turn_context, &context_items)
+                    .await;
+            }
         }
         // Persist state only after any model-visible context generated from it.
         if let Some(world_state_item) = world_state_item {

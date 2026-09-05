@@ -134,6 +134,42 @@ impl ContextManager {
         }
     }
 
+    pub(crate) fn prepend_items<I>(&mut self, items: I, policy: TruncationPolicy)
+    where
+        I: IntoIterator,
+        I::Item: std::ops::Deref<Target = ResponseItem>,
+    {
+        let mut prefix = Vec::new();
+        for item in items {
+            prefix.push(self.process_item(item.deref(), policy));
+        }
+        prefix.extend(std::mem::take(&mut self.items));
+        self.items = prefix;
+        self.history_version = self.history_version.saturating_add(1);
+    }
+
+    pub(crate) fn move_contextual_developer_items_to_front(&mut self) {
+        let mut developer_items = Vec::new();
+        let mut remaining_items = Vec::new();
+        for item in std::mem::take(&mut self.items) {
+            if matches!(
+                &item,
+                ResponseItem::Message { role, content, .. }
+                    if role == "developer" && is_contextual_dev_message_content(content)
+            ) {
+                developer_items.push(item);
+            } else {
+                remaining_items.push(item);
+            }
+        }
+        if developer_items.is_empty() {
+            self.items = remaining_items;
+            return;
+        }
+        developer_items.extend(remaining_items);
+        self.replace(developer_items);
+    }
+
     /// Returns the history prepared for sending to the model. This applies a proper
     /// normalization and drops un-suited items. When `input_modalities` does not
     /// include `InputModality::Image`, images are stripped from messages and tool
