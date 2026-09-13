@@ -23,6 +23,8 @@ Commands that use more advanced shell features like redirection (>, >>, <), subs
 
 ## How to request escalation
 
+Use the default sandbox for ordinary commands. If you know an operation needs access outside the current workspace or restricted network access, request an approval-capable mode before performing it. Do not simply retry an unchanged command after a `Read-only file system` or similar sandbox denial; that default-sandbox retry will fail again without approval.
+
 IMPORTANT: To request approval to execute a command that will require escalated privileges:
 
 - Provide the `sandbox_permissions` parameter with the value `"require_escalated"`

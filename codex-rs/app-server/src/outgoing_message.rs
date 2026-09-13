@@ -308,6 +308,7 @@ impl OutgoingMessageSender {
         }
 
         let outgoing_message = OutgoingMessage::Request(request.clone());
+        let mut write_failed = false;
         let send_result = match connection_ids {
             None => {
                 self.sender
@@ -319,18 +320,28 @@ impl OutgoingMessageSender {
             Some(connection_ids) => {
                 let mut send_error = None;
                 for connection_id in connection_ids {
+                    let (write_complete_tx, write_complete_rx) = oneshot::channel();
                     if let Err(err) = self
                         .sender
                         .send(OutgoingEnvelope::ToConnection {
                             connection_id: *connection_id,
                             message: outgoing_message.clone(),
-                            write_complete_tx: None,
+                            write_complete_tx: Some(write_complete_tx),
                         })
                         .await
                     {
                         send_error = Some(err);
                         break;
                     } else {
+                        // Wait until the transport writer confirms that the
+                        // JSON-RPC request was written before awaiting a reply.
+                        if write_complete_rx.await.is_err() {
+                            warn!(
+                                "transport writer dropped server request {outgoing_message_id:?}"
+                            );
+                            write_failed = true;
+                            break;
+                        }
                         self.analytics_events_client
                             .track_server_request(connection_id.0, request.clone());
                     }
@@ -342,7 +353,10 @@ impl OutgoingMessageSender {
             }
         };
 
-        if let Err(err) = send_result {
+        if write_failed {
+            let mut request_id_to_callback = self.request_id_to_callback.lock().await;
+            request_id_to_callback.remove(&outgoing_message_id);
+        } else if let Err(err) = send_result {
             warn!("failed to send request {outgoing_message_id:?} to client: {err:?}");
             let mut request_id_to_callback = self.request_id_to_callback.lock().await;
             request_id_to_callback.remove(&outgoing_message_id);
@@ -1315,8 +1329,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn targeted_server_request_waits_for_transport_write() {
+        let (tx, mut rx) = mpsc::channel::<OutgoingEnvelope>(4);
+        let outgoing = Arc::new(OutgoingMessageSender::new(
+            tx,
+            codex_analytics::AnalyticsEventsClient::disabled(),
+        ));
+        let thread_outgoing = ThreadScopedOutgoingMessageSender::new(
+            outgoing,
+            vec![ConnectionId(42)],
+            ThreadId::new(),
+        );
+        let mut send_task = tokio::spawn(async move {
+            thread_outgoing
+                .send_request(ServerRequestPayload::ApplyPatchApproval(
+                    ApplyPatchApprovalParams {
+                        conversation_id: ThreadId::new(),
+                        call_id: "call-id".to_string(),
+                        file_changes: HashMap::new(),
+                        reason: None,
+                        grant_root: None,
+                    },
+                ))
+                .await
+        });
+        let envelope = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("request should be queued")
+            .expect("outgoing channel should remain open");
+        let OutgoingEnvelope::ToConnection {
+            connection_id,
+            write_complete_tx,
+            ..
+        } = envelope
+        else {
+            panic!("expected targeted request envelope");
+        };
+        assert_eq!(connection_id, ConnectionId(42));
+        assert!(timeout(Duration::from_millis(25), &mut send_task)
+            .await
+            .is_err());
+        write_complete_tx
+            .expect("request should carry a write completion signal")
+            .send(())
+            .expect("send task should still await the write");
+        timeout(Duration::from_secs(1), send_task)
+            .await
+            .expect("send should finish after the write")
+            .expect("send task should not panic");
+    }
+
+    #[tokio::test]
     async fn pending_requests_for_thread_returns_thread_requests_in_request_id_order() {
-        let (tx, _rx) = mpsc::channel::<OutgoingEnvelope>(8);
+        let (tx, mut rx) = mpsc::channel::<OutgoingEnvelope>(8);
+        let _drain = tokio::spawn(async move {
+            while let Some(envelope) = rx.recv().await {
+                if let OutgoingEnvelope::ToConnection {
+                    write_complete_tx: Some(tx),
+                    ..
+                } = envelope
+                {
+                    let _ = tx.send(());
+                }
+            }
+        });
         let outgoing = Arc::new(OutgoingMessageSender::new(
             tx,
             codex_analytics::AnalyticsEventsClient::disabled(),
@@ -1379,7 +1455,18 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_requests_for_thread_cancels_all_thread_requests() {
-        let (tx, _rx) = mpsc::channel::<OutgoingEnvelope>(8);
+        let (tx, mut rx) = mpsc::channel::<OutgoingEnvelope>(8);
+        let _drain = tokio::spawn(async move {
+            while let Some(envelope) = rx.recv().await {
+                if let OutgoingEnvelope::ToConnection {
+                    write_complete_tx: Some(tx),
+                    ..
+                } = envelope
+                {
+                    let _ = tx.send(());
+                }
+            }
+        });
         let outgoing = Arc::new(OutgoingMessageSender::new(
             tx,
             codex_analytics::AnalyticsEventsClient::disabled(),

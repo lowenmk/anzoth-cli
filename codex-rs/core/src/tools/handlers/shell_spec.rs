@@ -304,9 +304,9 @@ fn create_approval_parameters(
     }
     sandbox_permission_values.push(json!("require_escalated"));
     let sandbox_permissions_description = if exec_permission_approvals_enabled {
-        "Per-command sandbox override. Defaults to `use_default`; use `with_additional_permissions` with `additional_permissions`, or `require_escalated` for unsandboxed execution."
+        "Per-command sandbox override. Defaults to `use_default` for ordinary commands. When an operation needs access outside workspace roots or restricted network access, use `with_additional_permissions` with the exact requested paths/network fields so approval can be requested; prefer this scoped mode. Use `require_escalated` only when scoped permissions are insufficient, and include a short `justification`. A default-sandbox retry after a denial does not request approval."
     } else {
-        "Per-command sandbox override. Defaults to `use_default`; use `require_escalated` for unsandboxed execution."
+        "Per-command sandbox override. Defaults to `use_default`. Use `require_escalated` only when scoped permissions are unavailable, and include a short `justification`; retrying a denied default-sandbox command unchanged does not request approval."
     };
 
     let mut properties = BTreeMap::from([

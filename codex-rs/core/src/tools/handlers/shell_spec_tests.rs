@@ -114,6 +114,29 @@ fn exec_command_tool_can_hide_shell_parameter() {
 }
 
 #[test]
+fn exec_command_tool_documents_approval_capable_escalation() {
+    let tool = create_exec_command_tool(CommandToolOptions {
+        allow_login_shell: true,
+        exec_permission_approvals_enabled: true,
+    });
+    let value = serde_json::to_value(tool).expect("tool spec should serialize");
+    let description = value["parameters"]["properties"]["sandbox_permissions"]["description"]
+        .as_str()
+        .expect("sandbox permission description");
+    assert!(description.contains("with_additional_permissions"));
+    assert!(description.contains("additional_permissions"));
+    assert!(description.contains("require_escalated"));
+    assert!(description.contains("justification"));
+    assert!(description.contains("does not request approval"));
+    assert!(has_parameter_from_value(&value, "additional_permissions"));
+}
+
+fn has_parameter_from_value(tool: &serde_json::Value, parameter_name: &str) -> bool {
+    tool.pointer(&format!("/parameters/properties/{parameter_name}"))
+        .is_some()
+}
+
+#[test]
 fn write_stdin_tool_matches_expected_spec() {
     let tool = create_write_stdin_tool();
 

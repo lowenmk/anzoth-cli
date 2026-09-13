@@ -336,6 +336,9 @@ fn includes_request_permission_rule_instructions_for_on_request_when_enabled() {
     let text = instructions.body();
     assert!(text.contains("with_additional_permissions"));
     assert!(text.contains("additional_permissions"));
+    assert!(text.contains("exact target in `additional_permissions.file_system.write`"));
+    assert!(text.contains("Do not retry an unchanged command"));
+    assert!(text.contains("require_escalated"));
 }
 
 #[test]
