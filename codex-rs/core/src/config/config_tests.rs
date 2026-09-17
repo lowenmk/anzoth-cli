@@ -5556,6 +5556,36 @@ fn web_search_mode_disabled_overrides_legacy_request() {
 }
 
 #[test]
+fn anzoth_web_search_defaults_to_live() {
+    let cfg = ConfigToml::default();
+    let features = Features::with_defaults();
+
+    assert_eq!(
+        resolve_web_search_mode_for_provider(&cfg, &features, "anzoth-responses"),
+        Some(WebSearchMode::Live)
+    );
+}
+
+#[test]
+fn anzoth_web_search_explicit_modes_override_provider_default() {
+    let features = Features::with_defaults();
+    for mode in [
+        WebSearchMode::Live,
+        WebSearchMode::Cached,
+        WebSearchMode::Disabled,
+    ] {
+        let cfg = ConfigToml {
+            web_search: Some(mode),
+            ..Default::default()
+        };
+        assert_eq!(
+            resolve_web_search_mode_for_provider(&cfg, &features, "anzoth-responses"),
+            Some(mode)
+        );
+    }
+}
+
+#[test]
 fn web_search_mode_for_turn_preserves_indexed_for_disabled_permissions() {
     let web_search_mode = Constrained::allow_any(WebSearchMode::Indexed);
     let mode = resolve_web_search_mode_for_turn(&web_search_mode, &PermissionProfile::Disabled);

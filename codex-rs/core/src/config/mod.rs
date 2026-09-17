@@ -81,6 +81,7 @@ use codex_mcp::McpServerRegistration;
 use codex_mcp::ResolvedMcpCatalog;
 use codex_memories_read::memory_root;
 use codex_model_provider_info::ANZOTH_PROVIDER_ID;
+use codex_model_provider_info::ANZOTH_RESPONSES_PROVIDER_ID;
 use codex_model_provider_info::LEGACY_OLLAMA_CHAT_PROVIDER_ID;
 use codex_model_provider_info::ModelProviderInfo;
 use codex_model_provider_info::OLLAMA_CHAT_PROVIDER_REMOVED_ERROR;
@@ -2493,6 +2494,22 @@ fn resolve_web_search_mode(config_toml: &ConfigToml, features: &Features) -> Opt
     None
 }
 
+fn resolve_web_search_mode_for_provider(
+    config_toml: &ConfigToml,
+    features: &Features,
+    model_provider_id: &str,
+) -> Option<WebSearchMode> {
+    if config_toml.web_search.is_some() {
+        return resolve_web_search_mode(config_toml, features);
+    }
+    if model_provider_id == ANZOTH_PROVIDER_ID
+        || model_provider_id == ANZOTH_RESPONSES_PROVIDER_ID
+    {
+        return Some(WebSearchMode::Live);
+    }
+    resolve_web_search_mode(config_toml, features)
+}
+
 fn resolve_web_search_config(config_toml: &ConfigToml) -> Option<WebSearchConfig> {
     config_toml
         .tools
@@ -3502,8 +3519,13 @@ impl Config {
             );
             approvals_reviewer = constrained_approvals_reviewer.value();
         }
+        let model_provider_id = model_provider
+            .clone()
+            .or_else(|| cfg.model_provider.clone())
+            .unwrap_or_else(|| ANZOTH_PROVIDER_ID.to_string());
         let web_search_mode =
-            resolve_web_search_mode(&cfg, &features).unwrap_or(WebSearchMode::Cached);
+            resolve_web_search_mode_for_provider(&cfg, &features, &model_provider_id)
+                .unwrap_or(WebSearchMode::Cached);
         let web_search_config = resolve_web_search_config(&cfg);
         let experimental_request_user_input_enabled =
             resolve_experimental_request_user_input_enabled(&cfg);
@@ -3527,9 +3549,6 @@ impl Config {
             merge_configured_model_providers(built_in_model_providers(openai_base_url), cfg.model_providers)
                 .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidData, message))?;
 
-        let model_provider_id = model_provider
-            .or(cfg.model_provider)
-            .unwrap_or_else(|| ANZOTH_PROVIDER_ID.to_string());
         let model_provider = model_providers
             .get(&model_provider_id)
             .ok_or_else(|| {

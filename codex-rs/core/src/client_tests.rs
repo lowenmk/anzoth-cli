@@ -664,6 +664,14 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
                 exec_permission_approvals_enabled: false,
             }),
             create_apply_patch_function_tool(/*include_environment_id*/ false),
+            ToolSpec::WebSearch {
+                external_web_access: Some(true),
+                indexed_web_access: None,
+                filters: None,
+                user_location: None,
+                search_context_size: None,
+                search_content_types: Some(vec!["text".to_string(), "image".to_string()]),
+            },
         ],
         parallel_tool_calls: true,
         base_instructions: BaseInstructions {
@@ -707,7 +715,7 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
         assert!(request_json.get("messages").is_none());
         assert_eq!(
             request_json["tools"].as_array().expect("tools array").len(),
-            2
+            3
         );
         assert_eq!(request_json["tools"][0]["type"], json!("function"));
         assert_eq!(request_json["tools"][0]["name"], json!("shell_command"));
@@ -717,12 +725,14 @@ async fn build_responses_request_uses_top_level_tools_for_anzoth_models() {
             request_json["tools"][1]["parameters"]["properties"]["patch"]["type"],
             json!("string")
         );
+        assert_eq!(request_json["tools"][2]["type"], json!("web_search"));
+        assert_eq!(request_json["tools"][2]["external_web_access"], json!(true));
         assert!(
             request_json["tools"]
                 .as_array()
                 .expect("tools array")
                 .iter()
-                .all(|tool| tool["type"] == json!("function"))
+                .any(|tool| tool["type"] == json!("web_search"))
         );
         assert_eq!(request_json["tools"], json!(expected_tools));
         assert!(
