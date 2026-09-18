@@ -7,8 +7,10 @@ use codex_protocol::ThreadId;
 use codex_protocol::error::CodexErr;
 use codex_protocol::error::Result as CodexResult;
 use codex_protocol::protocol::InitialHistory;
+use codex_protocol::protocol::Op;
 use codex_protocol::protocol::W3cTraceContext;
 use codex_protocol::user_input::UserInput;
+use serde_json::Value;
 use std::sync::Arc;
 use std::sync::Weak;
 
@@ -20,6 +22,7 @@ pub struct AgentInvocation {
     pub config: Config,
     pub prompt: String,
     pub parent_trace: Option<W3cTraceContext>,
+    pub output_schema: Option<Value>,
 }
 
 /// A spawned agent whose initial turn has been submitted.
@@ -46,10 +49,24 @@ impl AgentRunner {
         parent_thread_id: ThreadId,
         invocation: AgentInvocation,
     ) -> CodexResult<AgentRun> {
+        self.start_inner(Some(parent_thread_id), invocation).await
+    }
+
+    /// Starts an auxiliary agent with no parent history or fork relationship.
+    pub async fn start_isolated(&self, invocation: AgentInvocation) -> CodexResult<AgentRun> {
+        self.start_inner(None, invocation).await
+    }
+
+    async fn start_inner(
+        &self,
+        parent_thread_id: Option<ThreadId>,
+        invocation: AgentInvocation,
+    ) -> CodexResult<AgentRun> {
         let AgentInvocation {
             config,
             prompt,
             parent_trace,
+            output_schema,
         } = invocation;
         if prompt.trim().is_empty() {
             return Err(CodexErr::InvalidRequest(
@@ -63,12 +80,29 @@ impl AgentRunner {
             .ok_or_else(|| CodexErr::UnsupportedOperation("thread manager dropped".to_string()))?;
         let environments =
             thread_manager.default_environment_selections(&config.cwd, &config.workspace_roots);
-        let NewThread {
-            thread_id, thread, ..
-        } = thread_manager
-            .spawn_subagent(
-                parent_thread_id,
-                StartThreadOptions {
+        let new_thread = if let Some(parent_thread_id) = parent_thread_id {
+            thread_manager
+                .spawn_subagent(
+                    parent_thread_id,
+                    StartThreadOptions {
+                        config,
+                        allow_provider_model_fallback: false,
+                        initial_history: InitialHistory::New,
+                        history_mode: None,
+                        session_source: None,
+                        thread_source: None,
+                        dynamic_tools: Vec::new(),
+                        metrics_service_name: None,
+                        parent_trace: parent_trace.clone(),
+                        environments,
+                        thread_extension_init: Default::default(),
+                        supports_openai_form_elicitation: false,
+                    },
+                )
+                .await?
+        } else {
+            thread_manager
+                .start_thread_with_options(StartThreadOptions {
                     config,
                     allow_provider_model_fallback: false,
                     initial_history: InitialHistory::New,
@@ -81,24 +115,47 @@ impl AgentRunner {
                     environments,
                     thread_extension_init: Default::default(),
                     supports_openai_form_elicitation: false,
-                },
-            )
-            .await?;
-        let turn_id = thread
+                })
+                .await?
+        };
+        let NewThread {
+            thread_id, thread, ..
+        } = new_thread;
+        let turn_id = match thread
             .submit_with_trace(
-                vec![UserInput::Text {
-                    text: prompt,
-                    text_elements: Vec::new(),
-                }]
-                .into(),
+                Op::UserInput {
+                    items: vec![UserInput::Text {
+                        text: prompt,
+                        text_elements: Vec::new(),
+                    }],
+                    final_output_json_schema: output_schema,
+                    responsesapi_client_metadata: None,
+                    additional_context: Default::default(),
+                    thread_settings: Default::default(),
+                },
                 parent_trace,
             )
-            .await?;
+            .await
+        {
+            Ok(turn_id) => turn_id,
+            Err(error) => {
+                let _ = thread.shutdown_and_wait().await;
+                let _ = thread_manager.remove_thread(&thread_id).await;
+                return Err(error);
+            }
+        };
 
         Ok(AgentRun {
             thread_id,
             turn_id,
             thread,
         })
+    }
+
+    pub async fn cleanup(&self, run: AgentRun) {
+        let _ = run.thread.shutdown_and_wait().await;
+        if let Some(thread_manager) = self.thread_manager.upgrade() {
+            let _ = thread_manager.remove_thread(&run.thread_id).await;
+        }
     }
 }

@@ -838,6 +838,7 @@ impl AppServerSession {
                 request_id,
                 params: TurnStartParams {
                     thread_id: thread_id.to_string(),
+                    title_context: None,
                     client_user_message_id: None,
                     input: items,
                     responsesapi_client_metadata: None,

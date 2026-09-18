@@ -108,6 +108,7 @@ pub use codex_protocol::config_types::ModelProviderAuthInfo;
 mod event_mapping;
 pub use codex_prompts as review_prompts;
 mod thread_manager;
+pub mod thread_title;
 pub(crate) mod web_search;
 pub(crate) mod windows_sandbox_read_grants;
 pub use thread_manager::ForkSnapshot;

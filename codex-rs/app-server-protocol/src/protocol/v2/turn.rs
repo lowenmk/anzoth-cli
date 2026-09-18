@@ -70,6 +70,10 @@ pub struct AdditionalContextEntry {
 #[ts(export_to = "v2/")]
 pub struct TurnStartParams {
     pub thread_id: String,
+    /// User-visible prompt text used for thread title generation only.
+    #[experimental("turn/start.titleContext")]
+    #[ts(optional = nullable)]
+    pub title_context: Option<String>,
     #[ts(optional = nullable)]
     pub client_user_message_id: Option<String>,
     pub input: Vec<UserInput>,

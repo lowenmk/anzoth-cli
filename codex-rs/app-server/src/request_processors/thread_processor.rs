@@ -7,6 +7,7 @@ use codex_protocol::config_types::MultiAgentMode;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_DANGER_FULL_ACCESS;
 use codex_protocol::models::BUILT_IN_PERMISSION_PROFILE_WORKSPACE;
 use codex_protocol::protocol::ThreadHistoryMode;
+use codex_thread_store::ThreadNameSource;
 
 const THREAD_LIST_DEFAULT_LIMIT: usize = 25;
 const THREAD_LIST_MAX_LIMIT: usize = 100;
@@ -1580,6 +1581,7 @@ impl ThreadRequestProcessor {
                 thread_id,
                 StoreThreadMetadataPatch {
                     name: Some(Some(name.clone())),
+                    name_source: Some(ThreadNameSource::Manual),
                     ..Default::default()
                 },
                 /*include_archived*/ false,

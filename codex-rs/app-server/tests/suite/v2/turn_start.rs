@@ -2601,6 +2601,7 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
         .send_turn_start_request(TurnStartParams {
             environments: None,
             thread_id: thread.id.clone(),
+            title_context: None,
             client_user_message_id: None,
             input: vec![V2UserInput::Text {
                 text: "first turn".to_string(),
@@ -2651,6 +2652,7 @@ async fn turn_start_explicit_local_environment_updates_legacy_cwd_between_turns(
                 runtime_workspace_roots: None,
             }]),
             thread_id: thread.id.clone(),
+            title_context: None,
             client_user_message_id: None,
             input: vec![V2UserInput::Text {
                 text: "second turn".to_string(),

@@ -88,6 +88,7 @@ pub(super) async fn update_thread_metadata(
     let mut resolved_rollout_path =
         resolve_rollout_path(store, thread_id, params.include_archived).await?;
     let name = patch.name;
+    let name_source = patch.name_source;
     let git_info = patch.git_info;
     if let Some(memory_mode) = patch.memory_mode {
         apply_thread_memory_mode(resolved_rollout_path.path.as_path(), thread_id, memory_mode)
@@ -108,7 +109,26 @@ pub(super) async fn update_thread_metadata(
     .await;
 
     if let Some(name) = name {
-        apply_thread_name(store, thread_id, name.unwrap_or_default()).await?;
+        let name = name.unwrap_or_default();
+        let applied = if let Some(name_source) = name_source {
+            let Some(state_db) = store.state_db().await else {
+                return Err(ThreadStoreError::Internal {
+                    message: format!("state database unavailable for title ownership: {thread_id}"),
+                });
+            };
+            state_db
+                .set_thread_title_if_owned(thread_id, &name, name_source.as_str())
+                .await
+                .map_err(|err| ThreadStoreError::Internal {
+                    message: format!("failed to persist title ownership for {thread_id}: {err}"),
+                })?
+        } else {
+            apply_thread_name(store, thread_id, name.clone()).await?;
+            true
+        };
+        if applied && name_source.is_some() {
+            apply_thread_name(store, thread_id, name).await?;
+        }
     }
 
     let resolved_git_info = match git_info {
@@ -253,7 +273,9 @@ async fn apply_metadata_update(
             if let Some(preview) = patch.preview {
                 metadata.preview = Some(preview);
             }
-            if let Some(name) = patch.name {
+            if patch.name_source.is_none()
+                && let Some(name) = patch.name
+            {
                 metadata.title = name.unwrap_or_default();
             }
             if let Some(title) = patch.title {

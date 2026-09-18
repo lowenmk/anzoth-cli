@@ -5,6 +5,77 @@ use std::sync::atomic::AtomicI64;
 use std::sync::atomic::Ordering;
 
 impl StateRuntime {
+    pub async fn set_thread_title_if_owned(
+        &self,
+        id: ThreadId,
+        title: &str,
+        source: &str,
+    ) -> anyhow::Result<bool> {
+        let condition = match source {
+            "manual" => "?3 = 'manual'",
+            "provisional" => {
+                "NOT EXISTS (SELECT 1 FROM thread_title_ownership WHERE thread_id = ?3) OR EXISTS (SELECT 1 FROM thread_title_ownership WHERE thread_id = ?3 AND source = 'provisional')"
+            }
+            "generated" => {
+                "EXISTS (SELECT 1 FROM thread_title_ownership WHERE thread_id = ?3 AND source IN ('provisional', 'generated'))"
+            }
+            _ => "0 = 1",
+        };
+        let query = format!("UPDATE threads SET title = ?1 WHERE id = ?2 AND ({condition})");
+        let mut tx = self.pool.begin().await?;
+        let id_string = id.to_string();
+        let result = sqlx::query(sqlx::AssertSqlSafe(query))
+            .bind(title)
+            .bind(&id_string)
+            .bind(&id_string)
+            .execute(&mut *tx)
+            .await?;
+        if result.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        sqlx::query(
+            "INSERT INTO thread_title_ownership (thread_id, source) VALUES (?, ?) ON CONFLICT(thread_id) DO UPDATE SET source = excluded.source",
+        )
+        .bind(&id_string)
+        .bind(source)
+        .execute(&mut *tx)
+        .await?;
+        tx.commit().await?;
+        Ok(true)
+    }
+
+    pub async fn get_thread_title_source(&self, id: ThreadId) -> anyhow::Result<Option<String>> {
+        sqlx::query_scalar("SELECT source FROM thread_title_ownership WHERE thread_id = ?")
+            .bind(id.to_string())
+            .fetch_optional(self.pool.as_ref())
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn set_thread_title_context_if_empty(
+        &self,
+        id: ThreadId,
+        context: &str,
+    ) -> anyhow::Result<()> {
+        sqlx::query(
+            "UPDATE thread_title_ownership SET visible_context = ? WHERE thread_id = ? AND (visible_context IS NULL OR visible_context = '')",
+        )
+        .bind(context)
+        .bind(id.to_string())
+        .execute(self.pool.as_ref())
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_thread_title_context(&self, id: ThreadId) -> anyhow::Result<Option<String>> {
+        sqlx::query_scalar("SELECT visible_context FROM thread_title_ownership WHERE thread_id = ?")
+            .bind(id.to_string())
+            .fetch_optional(self.pool.as_ref())
+            .await
+            .map_err(Into::into)
+    }
+
     pub async fn get_thread(&self, id: ThreadId) -> anyhow::Result<Option<crate::ThreadMetadata>> {
         let row = sqlx::query(
             r#"
@@ -1103,6 +1174,10 @@ WHERE assigned_thread_id = ?
                 .execute(&mut *tx)
                 .await?
                 .rows_affected();
+            sqlx::query("DELETE FROM thread_title_ownership WHERE thread_id = ?")
+                .bind(thread_id_string)
+                .execute(&mut *tx)
+                .await?;
         }
         tx.commit().await?;
 

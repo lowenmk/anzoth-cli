@@ -49,6 +49,7 @@ pub use types::StoredTurnError;
 pub use types::StoredTurnItemsView;
 pub use types::StoredTurnStatus;
 pub use types::ThreadMetadataPatch;
+pub use types::ThreadNameSource;
 pub use types::ThreadPage;
 pub use types::ThreadPersistenceMetadata;
 pub use types::ThreadRelationFilter;

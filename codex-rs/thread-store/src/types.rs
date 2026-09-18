@@ -65,6 +65,26 @@ pub struct ThreadPersistenceMetadata {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExtraConfig {}
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThreadNameSource {
+    Legacy,
+    Provisional,
+    Generated,
+    Manual,
+}
+
+impl ThreadNameSource {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Legacy => "legacy",
+            Self::Provisional => "provisional",
+            Self::Generated => "generated",
+            Self::Manual => "manual",
+        }
+    }
+}
+
 /// Parameters required to create a persisted thread.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateThreadParams {
@@ -547,6 +567,8 @@ pub struct ThreadMetadataPatch {
         with = "optional_option"
     )]
     pub name: ClearableField<String>,
+    /// Durable ownership of the thread name, separate from the display text.
+    pub name_source: Option<ThreadNameSource>,
     /// Known local rollout path for stores that expose one.
     pub rollout_path: Option<PathBuf>,
     /// Best available preview text for discovery/listing.
@@ -628,6 +650,9 @@ impl ThreadMetadataPatch {
         if next.name.is_some() {
             self.name = next.name;
         }
+        if next.name_source.is_some() {
+            self.name_source = next.name_source;
+        }
         if next.rollout_path.is_some() {
             self.rollout_path = next.rollout_path;
         }
@@ -700,6 +725,7 @@ impl ThreadMetadataPatch {
 
     pub fn is_empty(&self) -> bool {
         self.name.is_none()
+            && self.name_source.is_none()
             && self.rollout_path.is_none()
             && self.preview.is_none()
             && self.title.is_none()

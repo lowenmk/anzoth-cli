@@ -2,15 +2,23 @@ use super::*;
 use codex_agent_extension::AgentInvocation;
 use codex_agent_extension::AgentRun;
 use codex_agent_extension::AgentRunner;
+use codex_core::thread_title;
+use codex_features::Feature;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputContentItem;
 use codex_protocol::models::PermissionProfile;
+use codex_protocol::models::ResponseItem;
 use codex_protocol::protocol::AdditionalContextEntry as CoreAdditionalContextEntry;
 use codex_protocol::protocol::AdditionalContextKind as CoreAdditionalContextKind;
+use codex_protocol::protocol::AskForApproval;
 use codex_protocol::protocol::MultiAgentVersion;
 use codex_protocol::protocol::SessionSource;
 use codex_protocol::protocol::SubAgentSource;
 use codex_skills::system_cache_root_dir;
+use codex_thread_store::ThreadNameSource;
+use std::collections::HashMap;
+use std::time::Duration;
+use std::time::Instant;
 
 use crate::image_url::REMOTE_IMAGE_URL_ERROR;
 use crate::image_url::is_remote_image_url;
@@ -85,6 +93,7 @@ pub(crate) struct TurnRequestProcessor {
     thread_watch_manager: ThreadWatchManager,
     thread_list_state_permit: Arc<Semaphore>,
     skills_watcher: Arc<SkillsWatcher>,
+    title_threads_started: Arc<Mutex<HashSet<ThreadId>>>,
 }
 
 fn map_additional_context(
@@ -156,6 +165,7 @@ impl TurnRequestProcessor {
             thread_watch_manager,
             thread_list_state_permit,
             skills_watcher,
+            title_threads_started: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -473,6 +483,8 @@ impl TurnRequestProcessor {
                 .inspect_err(|error| {
                     self.track_error_response(&request_id, error, /*error_type*/ None);
                 })?;
+        let turn_started_at = Instant::now();
+        tracing::debug!(%thread_id, "turn/start received");
         self.ensure_direct_input_allowed(&request_id, thread.as_ref())
             .await?;
         if let Err(error) = Self::validate_v2_input_limit(&params.input) {
@@ -513,6 +525,7 @@ impl TurnRequestProcessor {
             .into_iter()
             .map(V2UserInput::into_core)
             .collect();
+        let title_context = params.title_context.clone();
         let client_user_message_id = params.client_user_message_id;
         let additional_context = map_additional_context(params.additional_context);
         let turn_has_input = !mapped_items.is_empty();
@@ -574,6 +587,32 @@ impl TurnRequestProcessor {
             })?;
 
         if turn_has_input {
+            let title_processor = self.clone();
+            let title_thread = Arc::clone(&thread);
+            tokio::spawn(async move {
+                tracing::debug!(
+                    %thread_id,
+                    elapsed_ms = turn_started_at.elapsed().as_millis() as u64,
+                    "turn/start visible input submitted"
+                );
+                tracing::debug!(%thread_id, "title housekeeping started");
+                title_processor
+                    .maybe_start_semantic_title(thread_id, title_thread, title_context)
+                    .await;
+                tracing::debug!(
+                    %thread_id,
+                    elapsed_ms = turn_started_at.elapsed().as_millis() as u64,
+                    "title housekeeping finished"
+                );
+            });
+            tracing::debug!(
+                %thread_id,
+                elapsed_ms = turn_started_at.elapsed().as_millis() as u64,
+                "title housekeeping scheduled"
+            );
+        }
+
+        if turn_has_input {
             let config_snapshot = thread.config_snapshot().await;
             let parent_permission_profile =
                 parent_permission_profile_override.unwrap_or(config_snapshot.permission_profile);
@@ -603,6 +642,320 @@ impl TurnRequestProcessor {
         };
 
         Ok(TurnStartResponse { turn })
+    }
+
+    async fn maybe_start_semantic_title(
+        &self,
+        thread_id: ThreadId,
+        thread: Arc<CodexThread>,
+        title_context: Option<String>,
+    ) {
+        let manager = Arc::clone(&self.thread_manager);
+        let outgoing = Arc::clone(&self.outgoing);
+        if let Some(state_db) = thread.state_db()
+            && state_db
+                .get_thread_title_source(thread_id)
+                .await
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some("manual")
+        {
+            return;
+        }
+        let title_context = title_context.filter(|value| !value.trim().is_empty());
+        let stored_name_exists = thread
+            .read_thread(true, false)
+            .await
+            .ok()
+            .and_then(|stored| stored.name)
+            .is_some();
+        if !stored_name_exists {
+            if let Some(context) = title_context.as_deref()
+                && let Some(name) = thread_title::provisional_title(context)
+            {
+                let persisted = if let Some(state_db) = thread.state_db() {
+                    match state_db
+                        .set_thread_title_if_owned(
+                            thread_id,
+                            &name,
+                            ThreadNameSource::Provisional.as_str(),
+                        )
+                        .await
+                    {
+                        Ok(true) => {
+                            tracing::debug!(%thread_id, "provisional title persisted");
+                            if let Err(error) = state_db
+                                .set_thread_title_context_if_empty(thread_id, context)
+                                .await
+                            {
+                                tracing::warn!(%thread_id, %error, "provisional title context persistence failed");
+                            }
+                            true
+                        }
+                        Ok(false) => false,
+                        Err(error) => {
+                            tracing::warn!(%thread_id, %error, "provisional title persistence failed");
+                            false
+                        }
+                    }
+                } else {
+                    tracing::warn!(%thread_id, "provisional title persistence skipped: state database unavailable");
+                    false
+                };
+                if persisted {
+                    outgoing
+                        .send_server_notification(ServerNotification::ThreadNameUpdated(
+                            ThreadNameUpdatedNotification {
+                                thread_id: thread_id.to_string(),
+                                thread_name: Some(name),
+                            },
+                        ))
+                        .await;
+                }
+            }
+        }
+
+        let first_user_context = if let Some(context) = title_context.as_deref() {
+            Some(context.to_string())
+        } else if let Some(state_db) = thread.state_db() {
+            state_db
+                .get_thread_title_context(thread_id)
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
+        let Some(stored) = thread.read_thread(true, true).await.ok() else {
+            return;
+        };
+        let Some(history) = stored.history else {
+            return;
+        };
+        let Some(context) =
+            thread_title::conversation_context(&history.items, first_user_context.as_deref())
+        else {
+            return;
+        };
+        tracing::debug!(%thread_id, "semantic title eligibility satisfied");
+        {
+            let mut started = self.title_threads_started.lock().await;
+            if !started.insert(thread_id) {
+                return;
+            }
+        }
+
+        let runner = self.agent_runner.clone();
+        tracing::debug!(%thread_id, "semantic title task starting");
+        let title_task_started_at = Instant::now();
+        tracing::info!(
+            parent_thread_id = %thread_id,
+            "title_task_started"
+        );
+        tokio::spawn(async move {
+            let mut config = (*thread.config().await).clone();
+            config.ephemeral = true;
+            if config
+                .permissions
+                .approval_policy
+                .set(AskForApproval::Never)
+                .is_err()
+                || config
+                    .permissions
+                    .set_permission_profile(PermissionProfile::read_only())
+                    .is_err()
+            {
+                tracing::debug!(
+                    "semantic thread title task cannot establish non-interactive read-only permissions"
+                );
+                return;
+            }
+            for feature in [
+                Feature::ShellTool,
+                Feature::CodeMode,
+                Feature::CodeModeHost,
+                Feature::CodeModeOnly,
+                Feature::UnifiedExec,
+                Feature::WebSearchRequest,
+                Feature::WebSearchCached,
+                Feature::StandaloneWebSearch,
+                Feature::Apps,
+                Feature::EnableMcpApps,
+                Feature::ImageGeneration,
+                Feature::RequestPermissionsTool,
+                Feature::DefaultModeRequestUserInput,
+                Feature::ToolCallMcpElicitation,
+                Feature::RemoteCompactionV2,
+            ] {
+                if config.features.disable(feature).is_err() {
+                    tracing::debug!("semantic thread title task cannot disable feature");
+                    return;
+                }
+            }
+            if config.mcp_servers.set(HashMap::new()).is_err() {
+                tracing::debug!("semantic thread title task cannot disable MCP servers");
+                return;
+            }
+            let run = match runner
+                .start_isolated(AgentInvocation {
+                    config,
+                    prompt: thread_title::prompt(&context),
+                    parent_trace: None,
+                    output_schema: Some(thread_title::output_schema()),
+                })
+                .await
+            {
+                Ok(run) => {
+                    tracing::info!(
+                        parent_thread_id = %thread_id,
+                        isolated_thread_id = %run.thread_id,
+                        isolated_turn_id = %run.turn_id,
+                        elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                        "title_task_thread_created"
+                    );
+                    tracing::info!(
+                        parent_thread_id = %thread_id,
+                        isolated_thread_id = %run.thread_id,
+                        isolated_turn_id = %run.turn_id,
+                        elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                        "title_task_turn_started"
+                    );
+                    run
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        parent_thread_id = %thread_id,
+                        elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                        error = %error,
+                        "title_task_start_failed"
+                    );
+                    return;
+                }
+            };
+            let title_result = tokio::time::timeout(Duration::from_secs(30), async {
+                loop {
+                    let stored = match run.thread.read_thread(true, true).await {
+                        Ok(stored) => stored,
+                        Err(error) => {
+                            tracing::debug!(
+                                parent_thread_id = %thread_id,
+                                isolated_thread_id = %run.thread_id,
+                                error = %error,
+                                "title_task_result_read_failed"
+                            );
+                            tokio::time::sleep(Duration::from_millis(100)).await;
+                            continue;
+                        }
+                    };
+                    if let Some(history) = stored.history {
+                        if let Some(last_agent_message) =
+                            thread_title::completed_turn_message(&history.items, &run.turn_id)
+                        {
+                            tracing::info!(
+                                parent_thread_id = %thread_id,
+                                isolated_thread_id = %run.thread_id,
+                                isolated_turn_id = %run.turn_id,
+                                item_count = history.items.len(),
+                                has_last_agent_message = last_agent_message.is_some(),
+                                elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                                "title_task_response_completed"
+                            );
+                            break Some(last_agent_message);
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            })
+            .await;
+            let title = match title_result {
+                Ok(Some(Some(raw_title))) => match thread_title::parse(&raw_title) {
+                    Some(title) => {
+                        tracing::info!(
+                            parent_thread_id = %thread_id,
+                            isolated_thread_id = %run.thread_id,
+                            elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                            "title_task_validated"
+                        );
+                        Some(title)
+                    }
+                    None => {
+                        tracing::warn!(
+                            parent_thread_id = %thread_id,
+                            isolated_thread_id = %run.thread_id,
+                            "title_task_parse_rejected"
+                        );
+                        None
+                    }
+                },
+                Ok(Some(None)) => {
+                    tracing::warn!(
+                        parent_thread_id = %thread_id,
+                        isolated_thread_id = %run.thread_id,
+                        "title_task_empty_result"
+                    );
+                    None
+                }
+                Err(_) => {
+                    tracing::warn!(
+                        parent_thread_id = %thread_id,
+                        isolated_thread_id = %run.thread_id,
+                        elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                        "title_task_timeout"
+                    );
+                    None
+                }
+            };
+            runner.cleanup(run).await;
+            tracing::info!(
+                parent_thread_id = %thread_id,
+                elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                "title_task_cleanup"
+            );
+            let Some(title) = title else {
+                return;
+            };
+            tracing::info!(
+                parent_thread_id = %thread_id,
+                "title_task_persist_attempt"
+            );
+            let persisted = match manager
+                .update_thread_metadata(
+                    thread_id,
+                    StoreThreadMetadataPatch {
+                        name: Some(Some(title.clone())),
+                        name_source: Some(ThreadNameSource::Generated),
+                        ..Default::default()
+                    },
+                    false,
+                )
+                .await
+            {
+                Ok(_) => true,
+                Err(error) => {
+                    tracing::warn!(%thread_id, %error, "generated title persistence failed");
+                    false
+                }
+            };
+            if persisted {
+                tracing::info!(
+                    parent_thread_id = %thread_id,
+                    "title_task_persist_success"
+                );
+                outgoing
+                    .send_server_notification(ServerNotification::ThreadNameUpdated(
+                        ThreadNameUpdatedNotification {
+                            thread_id: thread_id.to_string(),
+                            thread_name: Some(title),
+                        },
+                    ))
+                    .await;
+                tracing::info!(
+                    parent_thread_id = %thread_id,
+                    "title_task_event_emitted"
+                );
+            }
+        });
     }
 
     async fn build_environment_override(
@@ -1286,6 +1639,7 @@ impl TurnRequestProcessor {
                     config,
                     prompt: prompt.to_string(),
                     parent_trace: self.request_trace_context(request_id).await,
+                    output_schema: None,
                 },
             )
             .await
