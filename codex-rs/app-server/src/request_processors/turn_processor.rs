@@ -896,6 +896,14 @@ impl TurnRequestProcessor {
                     );
                     None
                 }
+                Ok(None) => {
+                    tracing::warn!(
+                        parent_thread_id = %thread_id,
+                        isolated_thread_id = %run.thread_id,
+                        "title_task_empty_result"
+                    );
+                    None
+                }
                 Err(_) => {
                     tracing::warn!(
                         parent_thread_id = %thread_id,
