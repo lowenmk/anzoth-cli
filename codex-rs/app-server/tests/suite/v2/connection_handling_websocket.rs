@@ -1,6 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use anyhow::bail;
+#[cfg(debug_assertions)]
 use app_test_support::DISABLE_PLUGIN_STARTUP_TASKS_ARG;
 use app_test_support::create_mock_responses_server_sequence_unchecked;
 use app_test_support::to_response;
@@ -490,10 +491,10 @@ pub(super) async fn spawn_websocket_server_with_args(
     let program = codex_utils_cargo_bin::cargo_bin("codex-app-server")
         .context("should find app-server binary")?;
     let mut cmd = Command::new(program);
-    cmd.arg("--listen")
-        .arg(listen_url)
-        .arg(DISABLE_PLUGIN_STARTUP_TASKS_ARG)
-        .args(extra_args)
+    cmd.arg("--listen").arg(listen_url);
+    #[cfg(debug_assertions)]
+    cmd.arg(DISABLE_PLUGIN_STARTUP_TASKS_ARG);
+    cmd.args(extra_args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -626,10 +627,10 @@ async fn run_websocket_server_to_completion_with_args(
     let program = codex_utils_cargo_bin::cargo_bin("codex-app-server")
         .context("should find app-server binary")?;
     let mut cmd = Command::new(program);
-    cmd.arg("--listen")
-        .arg(listen_url)
-        .arg(DISABLE_PLUGIN_STARTUP_TASKS_ARG)
-        .args(extra_args)
+    cmd.arg("--listen").arg(listen_url);
+    #[cfg(debug_assertions)]
+    cmd.arg(DISABLE_PLUGIN_STARTUP_TASKS_ARG);
+    cmd.args(extra_args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped())

@@ -835,36 +835,32 @@ impl TurnRequestProcessor {
             };
             let title_result = tokio::time::timeout(Duration::from_secs(30), async {
                 loop {
-                    let stored = match run.thread.read_thread(true, true).await {
-                        Ok(stored) => stored,
+                    let event = match run.thread.next_event().await {
+                        Ok(event) => event,
                         Err(error) => {
-                            tracing::debug!(
-                                parent_thread_id = %thread_id,
-                                isolated_thread_id = %run.thread_id,
-                                error = %error,
-                                "title_task_result_read_failed"
-                            );
-                            tokio::time::sleep(Duration::from_millis(100)).await;
-                            continue;
-                        }
-                    };
-                    if let Some(history) = stored.history {
-                        if let Some(last_agent_message) =
-                            thread_title::completed_turn_message(&history.items, &run.turn_id)
-                        {
-                            tracing::info!(
+                            tracing::warn!(
                                 parent_thread_id = %thread_id,
                                 isolated_thread_id = %run.thread_id,
                                 isolated_turn_id = %run.turn_id,
-                                item_count = history.items.len(),
-                                has_last_agent_message = last_agent_message.is_some(),
-                                elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
-                                "title_task_response_completed"
+                                error = %error,
+                                "title_task_event_stream_failed"
                             );
-                            break Some(last_agent_message);
+                            break None;
                         }
+                    };
+                    if let EventMsg::TurnComplete(completion) = event.msg
+                        && completion.turn_id == run.turn_id
+                    {
+                        tracing::info!(
+                            parent_thread_id = %thread_id,
+                            isolated_thread_id = %run.thread_id,
+                            isolated_turn_id = %run.turn_id,
+                            has_last_agent_message = completion.last_agent_message.is_some(),
+                            elapsed_ms = title_task_started_at.elapsed().as_millis() as u64,
+                            "title_task_response_completed"
+                        );
+                        break Some(completion.last_agent_message);
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
                 }
             })
             .await;
