@@ -61,6 +61,29 @@ pub fn completed_turn_message(items: &[RolloutItem], turn_id: &str) -> Option<Op
     })
 }
 
+pub fn completed_visible_turns(items: &[RolloutItem]) -> usize {
+    let mut completed = 0;
+    let mut has_user = false;
+    let mut has_assistant = false;
+    for item in items {
+        if message_text_for_role(item, "user").is_some() {
+            has_user = true;
+        }
+        if message_text_for_role(item, "assistant").is_some() {
+            has_assistant = true;
+        }
+        if matches!(item, RolloutItem::EventMsg(EventMsg::TurnComplete(_)))
+            && has_user
+            && has_assistant
+        {
+            completed += 1;
+            has_user = false;
+            has_assistant = false;
+        }
+    }
+    completed
+}
+
 pub fn provisional_title(value: &str) -> Option<String> {
     let value = value.trim();
     (!value.is_empty()).then(|| value.chars().take(THREAD_TITLE_MAX_CHARS).collect())
@@ -143,6 +166,9 @@ pub fn conversation_context(
     items: &[RolloutItem],
     first_user_context: Option<&str>,
 ) -> Option<String> {
+    if completed_visible_turns(items) < 3 {
+        return None;
+    }
     let user_messages = role_messages(items, "user");
     let assistant_messages = role_messages(items, "assistant");
     let first_user = first_user_context
@@ -150,8 +176,11 @@ pub fn conversation_context(
         .or_else(|| user_messages.first().cloned())?;
     let first_assistant = assistant_messages.first().cloned()?;
     let second_user = user_messages.get(1).cloned()?;
+    let second_assistant = assistant_messages.get(1).cloned()?;
+    let third_user = user_messages.get(2).cloned()?;
+    let third_assistant = assistant_messages.get(2).cloned()?;
     Some(format!(
-        "First user message:\n{first_user}\n\nFirst assistant response:\n{first_assistant}\n\nSecond user message:\n{second_user}"
+        "First user message:\n{first_user}\n\nFirst assistant response:\n{first_assistant}\n\nSecond user message:\n{second_user}\n\nSecond assistant response:\n{second_assistant}\n\nThird user message:\n{third_user}\n\nThird assistant response:\n{third_assistant}"
     ))
 }
 
@@ -207,7 +236,7 @@ mod tests {
     }
 
     #[test]
-    fn conversation_context_requires_two_users_and_one_assistant() {
+    fn conversation_context_requires_three_completed_visible_turns() {
         let items = vec![
             RolloutItem::ResponseItem(ResponseItem::Message {
                 id: None,
@@ -236,10 +265,59 @@ mod tests {
                 phase: None,
                 internal_chat_message_metadata_passthrough: None,
             }),
+            RolloutItem::ResponseItem(ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "second answer".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }),
+            RolloutItem::ResponseItem(ResponseItem::Message {
+                id: None,
+                role: "user".to_string(),
+                content: vec![ContentItem::InputText {
+                    text: "third".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }),
+            RolloutItem::ResponseItem(ResponseItem::Message {
+                id: None,
+                role: "assistant".to_string(),
+                content: vec![ContentItem::OutputText {
+                    text: "third answer".to_string(),
+                }],
+                phase: None,
+                internal_chat_message_metadata_passthrough: None,
+            }),
         ];
-        let context = conversation_context(&items, None).expect("conversation should be ready");
+        assert!(conversation_context(&items, None).is_none());
+        let context_items = items
+            .into_iter()
+            .flat_map(|item| {
+                [
+                    item,
+                    RolloutItem::EventMsg(EventMsg::TurnComplete(
+                        codex_protocol::protocol::TurnCompleteEvent {
+                            turn_id: "turn".to_string(),
+                            last_agent_message: None,
+                            error: None,
+                            started_at: None,
+                            completed_at: None,
+                            duration_ms: None,
+                            time_to_first_token_ms: None,
+                        },
+                    )),
+                ]
+            })
+            .collect::<Vec<_>>();
+        let context =
+            conversation_context(&context_items, None).expect("conversation should be ready");
         assert!(context.contains("first"));
         assert!(context.contains("answer"));
         assert!(context.contains("second"));
+        assert!(context.contains("third answer"));
     }
 }

@@ -589,6 +589,7 @@ impl TurnRequestProcessor {
         if turn_has_input {
             let title_processor = self.clone();
             let title_thread = Arc::clone(&thread);
+            let title_turn_id = turn_id.clone();
             tokio::spawn(async move {
                 tracing::debug!(
                     %thread_id,
@@ -597,7 +598,12 @@ impl TurnRequestProcessor {
                 );
                 tracing::debug!(%thread_id, "title housekeeping started");
                 title_processor
-                    .maybe_start_semantic_title(thread_id, title_thread, title_context)
+                    .maybe_start_semantic_title(
+                        thread_id,
+                        title_thread,
+                        title_turn_id,
+                        title_context,
+                    )
                     .await;
                 tracing::debug!(
                     %thread_id,
@@ -648,6 +654,7 @@ impl TurnRequestProcessor {
         &self,
         thread_id: ThreadId,
         thread: Arc<CodexThread>,
+        turn_id: String,
         title_context: Option<String>,
     ) {
         let manager = Arc::clone(&self.thread_manager);
@@ -716,6 +723,19 @@ impl TurnRequestProcessor {
             }
         }
 
+        let history = loop {
+            let Some(stored) = thread.read_thread(true, true).await.ok() else {
+                return;
+            };
+            let Some(history) = stored.history else {
+                return;
+            };
+            if thread_title::completed_turn_message(&history.items, &turn_id).is_some() {
+                break history;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+
         let first_user_context = if let Some(context) = title_context.as_deref() {
             Some(context.to_string())
         } else if let Some(state_db) = thread.state_db() {
@@ -726,12 +746,6 @@ impl TurnRequestProcessor {
                 .flatten()
         } else {
             None
-        };
-        let Some(stored) = thread.read_thread(true, true).await.ok() else {
-            return;
-        };
-        let Some(history) = stored.history else {
-            return;
         };
         let Some(context) =
             thread_title::conversation_context(&history.items, first_user_context.as_deref())
