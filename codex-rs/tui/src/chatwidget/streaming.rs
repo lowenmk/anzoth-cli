@@ -114,6 +114,7 @@ impl ChatWidget {
     }
 
     pub(super) fn on_agent_message_delta(&mut self, delta: String) {
+        codex_otel::latency_trace::mark_once("tui_first_delta_received");
         self.handle_streaming_delta(delta);
     }
 

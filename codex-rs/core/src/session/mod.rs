@@ -1729,6 +1729,9 @@ impl Session {
 
     /// Persist the event to rollout and send it to clients.
     pub(crate) async fn send_event(&self, turn_context: &TurnContext, msg: EventMsg) {
+        if matches!(&msg, EventMsg::TurnComplete(_)) {
+            codex_otel::latency_trace::mark_once("turn_complete");
+        }
         let legacy_source = msg.clone();
         if let EventMsg::Error(error) = &legacy_source
             && error

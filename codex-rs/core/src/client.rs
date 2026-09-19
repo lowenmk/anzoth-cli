@@ -1703,7 +1703,10 @@ impl ModelClientSession {
             .map(AuthManager::unauthorized_recovery);
         let mut pending_retry = PendingUnauthorizedRetry::default();
         loop {
+            codex_otel::latency_trace::mark_once("auth_start");
             let client_setup = self.client.current_client_setup().await?;
+            codex_otel::latency_trace::mark_once("auth_end");
+            codex_otel::latency_trace::mark_once("provider_ready");
             let transport = self
                 .client
                 .build_api_transport(&client_setup.api_provider, "chat/completions")?;
@@ -1855,6 +1858,7 @@ impl ModelClientSession {
                 )
                 .await;
 
+            codex_otel::latency_trace::mark_once("request_serialize_begin");
             let mut request = self.client.build_responses_request(
                 &client_setup.api_provider,
                 prompt,
@@ -1867,6 +1871,35 @@ impl ModelClientSession {
             let store = request.store;
             self.client
                 .prepare_response_items_for_request(&mut request.input, store);
+            codex_otel::latency_trace::mark_once("request_serialized");
+            let serialized_request = serde_json::to_vec(&request).ok();
+            let tool_schema_bytes = serde_json::to_vec(&request.tools)
+                .map(|tools| tools.len())
+                .unwrap_or_default();
+            let image_count = serialized_request
+                .as_deref()
+                .map(|request| {
+                    request
+                        .windows(b"input_image".len())
+                        .filter(|w| *w == b"input_image")
+                        .count()
+                })
+                .unwrap_or_default();
+            let reasoning_effort = request
+                .reasoning
+                .as_ref()
+                .and_then(|reasoning| reasoning.effort.as_ref())
+                .map(ToString::to_string);
+            codex_otel::latency_trace::record_request_shape(
+                &request.model,
+                serialized_request.as_ref().map_or(0, |bytes| bytes.len()),
+                request.input.len(),
+                request.instructions.len(),
+                request.tools.as_ref().map_or(0, Vec::len),
+                tool_schema_bytes,
+                image_count,
+                reasoning_effort.as_deref(),
+            );
             let request_session_telemetry =
                 session_telemetry_for_request(session_telemetry, &request);
             let inference_trace_attempt = inference_trace.start_attempt();
@@ -1878,10 +1911,15 @@ impl ModelClientSession {
                 client_setup.api_auth,
             )
             .with_telemetry(Some(request_telemetry), Some(sse_telemetry));
+            codex_otel::latency_trace::mark_once("http_dispatch");
             let stream_result = client.stream_request(request, options).await;
 
             match stream_result {
                 Ok(stream) => {
+                    codex_otel::latency_trace::mark_once("response_headers");
+                    codex_otel::latency_trace::record_http_response_request_id(
+                        stream.upstream_request_id.as_deref(),
+                    );
                     let (stream, _) = map_response_stream(
                         stream,
                         request_session_telemetry,
@@ -2413,6 +2451,11 @@ where
             let Some(event) = event else {
                 break;
             };
+            codex_otel::latency_trace::mark_once("sse_first_byte");
+            codex_otel::latency_trace::mark_stream_event(match &event {
+                Ok(event) => response_event_name(event),
+                Err(_) => "error",
+            });
             match event {
                 Ok(ResponseEvent::OutputItemDone(item)) => {
                     items_added.push(item.clone());
@@ -2515,6 +2558,28 @@ where
         },
         rx_last_response,
     )
+}
+
+fn response_event_name(event: &ResponseEvent) -> &'static str {
+    match event {
+        ResponseEvent::Created => "response.created",
+        ResponseEvent::SafetyBuffering(_) => "response.safety_buffering",
+        ResponseEvent::OutputItemDone(_) => "response.output_item.done",
+        ResponseEvent::OutputItemAdded(_) => "response.output_item.added",
+        ResponseEvent::ServerModel(_) => "response.server_model",
+        ResponseEvent::ModelVerifications(_) => "response.model_verifications",
+        ResponseEvent::TurnModerationMetadata(_) => "response.turn_moderation_metadata",
+        ResponseEvent::ServerReasoningIncluded(_) => "response.server_reasoning_included",
+        ResponseEvent::Completed { .. } => "response.completed",
+        ResponseEvent::OutputTextDelta(_) => "response.output_text.delta",
+        ResponseEvent::ToolCallInputDelta { .. } => "response.tool_call_input.delta",
+        ResponseEvent::ReasoningSummaryDelta { .. } => "response.reasoning_summary.delta",
+        ResponseEvent::ReasoningSummaryDone { .. } => "response.reasoning_summary.done",
+        ResponseEvent::ReasoningContentDelta { .. } => "response.reasoning_content.delta",
+        ResponseEvent::ReasoningSummaryPartAdded { .. } => "response.reasoning_summary_part.added",
+        ResponseEvent::RateLimits(_) => "response.rate_limits",
+        ResponseEvent::ModelsEtag(_) => "response.models_etag",
+    }
 }
 
 /// Handles a 401 response by optionally refreshing ChatGPT tokens once.
@@ -2743,6 +2808,10 @@ impl ApiTelemetry {
 }
 
 impl RequestTelemetry for ApiTelemetry {
+    fn on_request_start(&self, attempt: u64, request: &codex_http_client::Request) {
+        codex_otel::latency_trace::record_http_attempt_start(attempt, &request.url);
+    }
+
     fn on_request(
         &self,
         attempt: u64,
@@ -2752,6 +2821,12 @@ impl RequestTelemetry for ApiTelemetry {
     ) {
         let error_message = error.map(telemetry_transport_error_message);
         let status = status.map(|s| s.as_u16());
+        codex_otel::latency_trace::record_http_attempt_result(
+            attempt,
+            status,
+            duration.as_millis(),
+            error_message.as_deref(),
+        );
         let debug = error
             .map(extract_response_debug_context)
             .unwrap_or_default();

@@ -205,6 +205,7 @@ pub(super) async fn user_input_or_turn_inner(
     else {
         unreachable!();
     };
+    codex_otel::latency_trace::mark_once("provider_resolve_begin");
     let emit_thread_settings_applied = thread_settings != ThreadSettingsOverrides::default();
     let mut updates = if emit_thread_settings_applied {
         thread_settings_update(sess, thread_settings).await
@@ -217,6 +218,7 @@ pub(super) async fn user_input_or_turn_inner(
         // new_turn_with_sub_id already emits the error event.
         return;
     };
+    codex_otel::latency_trace::mark_once("provider_ready");
     if emit_thread_settings_applied {
         sess.send_event_raw_without_materializing_rollout(Event {
             id: sub_id.clone(),

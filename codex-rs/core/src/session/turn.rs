@@ -2057,8 +2057,11 @@ async fn try_run_sampling_request(
             .record_responses(&handle_responses, &event);
         record_turn_ttft_metric(&turn_context, &event).await;
 
+        codex_otel::latency_trace::mark_once("response_in_progress");
         match event {
-            ResponseEvent::Created => {}
+            ResponseEvent::Created => {
+                codex_otel::latency_trace::mark_once("response_created");
+            }
             ResponseEvent::OutputItemDone(mut item) => {
                 if turn_context.item_ids_enabled() {
                     assign_missing_streamed_response_item_id(&mut item, active_item.as_ref());
@@ -2296,6 +2299,7 @@ async fn try_run_sampling_request(
                 token_usage,
                 end_turn,
             } => {
+                codex_otel::latency_trace::mark_once("response_completed");
                 flush_assistant_text_segments_all(
                     &sess,
                     &turn_context,
@@ -2328,6 +2332,8 @@ async fn try_run_sampling_request(
                 });
             }
             ResponseEvent::OutputTextDelta(delta) => {
+                codex_otel::latency_trace::mark_once("app_server_first_delta");
+                codex_otel::latency_trace::mark_once("first_text_delta");
                 // In review child threads, suppress assistant text deltas; the
                 // UI will show a selection popup from the final ReviewOutput.
                 if let Some(active) = active_item.as_ref() {

@@ -484,6 +484,7 @@ impl TurnRequestProcessor {
                     self.track_error_response(&request_id, error, /*error_type*/ None);
                 })?;
         let turn_started_at = Instant::now();
+        codex_otel::latency_trace::begin_for_thread(Some(&thread_id.to_string()));
         tracing::debug!(%thread_id, "turn/start received");
         self.ensure_direct_input_allowed(&request_id, thread.as_ref())
             .await?;
@@ -513,6 +514,7 @@ impl TurnRequestProcessor {
                 ))
             })?;
 
+        codex_otel::latency_trace::mark_once("context_build_start");
         let runtime_workspace_roots = params
             .runtime_workspace_roots
             .map(resolve_runtime_workspace_roots);
@@ -564,6 +566,8 @@ impl TurnRequestProcessor {
                     .as_ref()
                     .map(PermissionProfile::from_legacy_sandbox_policy)
             });
+        codex_otel::latency_trace::mark_once("context_build_end");
+        codex_otel::latency_trace::mark_once("request_build_start");
 
         // Start the turn by submitting the user input. Return its submission id as turn_id.
         let turn_op = Op::UserInput {
@@ -585,6 +589,8 @@ impl TurnRequestProcessor {
                 self.track_error_response(&request_id, &error, /*error_type*/ None);
                 error
             })?;
+        codex_otel::latency_trace::set_turn_id(turn_id.to_string());
+        codex_otel::latency_trace::mark_once("request_build_end");
 
         if turn_has_input {
             let title_processor = self.clone();

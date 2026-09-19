@@ -408,6 +408,8 @@ pub async fn run_main(
     strict_config: bool,
     default_analytics_enabled: bool,
 ) -> IoResult<()> {
+    codex_otel::latency_trace::process_marker("process_start");
+    codex_otel::latency_trace::process_marker("app_server_start");
     run_main_with_transport_options(
         arg0_paths,
         cli_config_overrides,
@@ -711,6 +713,7 @@ pub async fn run_main_with_transport_options(
         }
         AppServerTransport::Off => {}
     }
+    codex_otel::latency_trace::process_marker("app_server_ready");
     drop(unix_socket_startup_lock);
 
     let auth_manager =

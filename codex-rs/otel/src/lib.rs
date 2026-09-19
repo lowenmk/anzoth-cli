@@ -1,5 +1,6 @@
 pub(crate) mod config;
 mod events;
+pub mod latency_trace;
 pub(crate) mod metrics;
 pub(crate) mod provider;
 pub(crate) mod trace_context;

@@ -74,6 +74,7 @@ impl ChatWidget {
         user_message: UserMessage,
         history_record: UserMessageHistoryRecord,
     ) -> bool {
+        codex_otel::latency_trace::begin();
         self.submit_user_message_with_history_and_shell_escape_policy(
             user_message,
             history_record,
@@ -112,6 +113,7 @@ impl ChatWidget {
             self.refresh_pending_input_preview();
             return (true, None);
         }
+        codex_otel::latency_trace::mark_once("turn_construct_begin");
         if user_message.text.is_empty()
             && user_message.local_images.is_empty()
             && user_message.remote_image_urls.is_empty()
@@ -350,6 +352,7 @@ impl ChatWidget {
             collaboration_mode,
             personality,
         );
+        codex_otel::latency_trace::mark_once("turn_construct_end");
         let submitted_message = UserMessage {
             text,
             local_images,
