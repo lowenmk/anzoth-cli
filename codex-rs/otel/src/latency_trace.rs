@@ -3,8 +3,8 @@ use std::sync::Mutex;
 use std::sync::OnceLock;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::SystemTime;
 use std::time::Instant;
+use std::time::SystemTime;
 
 struct TraceState {
     id: u64,
@@ -135,7 +135,10 @@ pub fn record_http_attempt_start(attempt: u64, url: &str) {
     {
         let _ = url;
         emit(trace, "responses_http_dispatch");
-        eprintln!("[ANZOTH-LATENCY turn={} attempt={} retry_stage=http_dispatch]", trace.id, attempt);
+        eprintln!(
+            "[ANZOTH-LATENCY turn={} attempt={} retry_stage=http_dispatch]",
+            trace.id, attempt
+        );
     }
 }
 
@@ -158,7 +161,10 @@ pub fn record_http_attempt_result(
             trace.id, attempt, status, duration_ms, error_category
         );
         if attempt > 1 {
-            eprintln!("[ANZOTH-LATENCY turn={} retry_stage=responses_http attempt={} reason_category={}]", trace.id, attempt, error_category);
+            eprintln!(
+                "[ANZOTH-LATENCY turn={} retry_stage=responses_http attempt={} reason_category={}]",
+                trace.id, attempt, error_category
+            );
         }
     }
 }
@@ -173,7 +179,10 @@ pub fn record_http_response_request_id(request_id: Option<&str>) {
     if let Ok(mut active) = trace_lock().lock()
         && let Some(trace) = active.as_mut()
     {
-        eprintln!("[ANZOTH-LATENCY turn={} stage=response_request_id present=true]", trace.id);
+        eprintln!(
+            "[ANZOTH-LATENCY turn={} stage=response_request_id present=true]",
+            trace.id
+        );
     }
 }
 
@@ -199,10 +208,187 @@ pub fn record_request_shape(
         let reasoning_effort = reasoning_effort.unwrap_or("none");
         eprintln!(
             "[ANZOTH-LATENCY turn={} stage=request_shape model={} request_bytes={} input_items={} instruction_bytes={} tool_count={} tool_schema_bytes={} image_count={} reasoning_effort={}]",
-            trace.id, model, request_bytes, input_items, instruction_bytes, tool_count,
-            tool_schema_bytes, image_count, reasoning_effort
+            trace.id,
+            model,
+            request_bytes,
+            input_items,
+            instruction_bytes,
+            tool_count,
+            tool_schema_bytes,
+            image_count,
+            reasoning_effort
         );
     }
+}
+
+/// Emits privacy-preserving request composition details. Values are derived from
+/// serialized JSON only; prompt, schema, and metadata contents are never logged.
+pub fn record_request_accounting(request: &serde_json::Value) {
+    if !enabled() {
+        return;
+    }
+    let Some(object) = request.as_object() else {
+        return;
+    };
+    let input = object.get("input").and_then(serde_json::Value::as_array);
+    let tools = object.get("tools").and_then(serde_json::Value::as_array);
+    let instruction_bytes = object
+        .get("instructions")
+        .map(serialized_len)
+        .unwrap_or_default();
+    let input_bytes: usize = input
+        .map(|items| items.iter().map(serialized_len).sum())
+        .unwrap_or_default();
+    let tool_bytes: usize = tools
+        .map(|items| items.iter().map(serialized_len).sum())
+        .unwrap_or_default();
+    let total_bytes = serde_json::to_vec(request).map_or(0, |bytes| bytes.len());
+    let item_lines = input
+        .map(|items| {
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    format!(
+                        "index={index} category={} bytes={}",
+                        input_category(item),
+                        serialized_len(item)
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let tool_lines = tools
+        .map(|items| {
+            items
+                .iter()
+                .map(|tool| {
+                    let name = tool
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .or_else(|| {
+                            tool.pointer("/function/name")
+                                .and_then(serde_json::Value::as_str)
+                        })
+                        .unwrap_or("unknown");
+                    format!(
+                        "name={} category={} bytes={}",
+                        safe_name(name),
+                        tool_category(name),
+                        serialized_len(tool)
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let duplicate_lines = duplicate_blocks(input, tools);
+    if let Ok(mut active) = trace_lock().lock()
+        && let Some(trace) = active.as_mut()
+    {
+        eprintln!(
+            "[ANZOTH-LATENCY turn={} stage=request_accounting total_bytes={} base_system_bytes={} developer_bytes=0 history_user_bytes={} environment_bytes=0 workspace_bytes=0 repository_project_bytes=0 agents_guidance_bytes=0 git_worktree_bytes=0 skills_bytes=0 plugins_bytes=0 mcp_bytes=0 tool_schema_bytes={} other_bytes={}]",
+            trace.id,
+            total_bytes,
+            instruction_bytes,
+            input_bytes,
+            tool_bytes,
+            total_bytes.saturating_sub(instruction_bytes + input_bytes + tool_bytes)
+        );
+        for line in tool_lines {
+            eprintln!(
+                "[ANZOTH-LATENCY turn={} tool_accounting {}]",
+                trace.id, line
+            );
+        }
+        for line in item_lines {
+            eprintln!(
+                "[ANZOTH-LATENCY turn={} input_accounting {}]",
+                trace.id, line
+            );
+        }
+        for line in duplicate_lines {
+            eprintln!(
+                "[ANZOTH-LATENCY turn={} duplicate_block {}]",
+                trace.id, line
+            );
+        }
+    }
+}
+
+fn serialized_len(value: &serde_json::Value) -> usize {
+    serde_json::to_vec(value).map_or(0, |bytes| bytes.len())
+}
+
+fn safe_name(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(*c, '_' | '-' | '.'))
+        .take(80)
+        .collect()
+}
+
+fn input_category(value: &serde_json::Value) -> &'static str {
+    match value.get("type").and_then(serde_json::Value::as_str) {
+        Some("message") => match value.get("role").and_then(serde_json::Value::as_str) {
+            Some("user") => "user",
+            Some("developer") => "developer",
+            Some("system") => "system",
+            _ => "message",
+        },
+        Some("input_text") => "user_text",
+        Some("reasoning") => "reasoning",
+        Some(kind) if kind.contains("tool") => "tool",
+        _ => "other",
+    }
+}
+
+fn tool_category(name: &str) -> &'static str {
+    if name.starts_with("mcp__") {
+        "mcp"
+    } else if name.starts_with("plugin__") {
+        "plugin"
+    } else {
+        "core"
+    }
+}
+
+fn block_hash(value: &serde_json::Value) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    serde_json::to_vec(value)
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn duplicate_blocks(
+    input: Option<&Vec<serde_json::Value>>,
+    tools: Option<&Vec<serde_json::Value>>,
+) -> Vec<String> {
+    use std::collections::HashMap;
+    let mut seen: HashMap<String, (usize, usize, &'static str)> = HashMap::new();
+    let mut duplicates = Vec::new();
+    for (category, values) in [
+        ("input", input.map(Vec::as_slice).unwrap_or(&[])),
+        ("tool", tools.map(Vec::as_slice).unwrap_or(&[])),
+    ] {
+        for value in values {
+            let hash = block_hash(value);
+            let bytes = serialized_len(value);
+            if let Some((count, _, _)) = seen.get_mut(&hash) {
+                *count += 1;
+                duplicates.push(format!(
+                    "hash={} bytes={} category={} count={}",
+                    &hash[..8],
+                    bytes,
+                    category,
+                    *count
+                ));
+            } else {
+                seen.insert(hash, (1, bytes, category));
+            }
+        }
+    }
+    duplicates
 }
 
 fn classify_error(error: &str) -> &'static str {
@@ -238,5 +424,21 @@ mod tests {
         assert_eq!(classify_error("401 secret-token-value"), "authentication");
         assert_eq!(classify_error("connection timed out"), "timeout");
         assert_eq!(classify_error("unexpected response"), "transport");
+    }
+
+    #[test]
+    fn accounting_is_structural_and_detects_duplicate_blocks() {
+        let request = serde_json::json!({
+            "instructions": "secret instruction",
+            "input": [{"type": "message", "role": "user", "content": [{"type": "input_text", "text": "same"}]}, {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "same"}]}],
+            "tools": [{"type": "function", "name": "exec_command", "parameters": {"type": "object"}}]
+        });
+        assert_eq!(input_category(&request["input"][0]), "user");
+        assert_eq!(tool_category("exec_command"), "core");
+        assert_eq!(
+            duplicate_blocks(request["input"].as_array(), request["tools"].as_array()).len(),
+            1
+        );
+        assert_eq!(safe_name("exec_command secret"), "exec_commandsecret");
     }
 }

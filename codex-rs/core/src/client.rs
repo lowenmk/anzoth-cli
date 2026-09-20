@@ -1890,6 +1890,9 @@ impl ModelClientSession {
                 .as_ref()
                 .and_then(|reasoning| reasoning.effort.as_ref())
                 .map(ToString::to_string);
+            if let Ok(request_value) = serde_json::to_value(&request) {
+                codex_otel::latency_trace::record_request_accounting(&request_value);
+            }
             codex_otel::latency_trace::record_request_shape(
                 &request.model,
                 serialized_request.as_ref().map_or(0, |bytes| bytes.len()),
